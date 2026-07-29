@@ -2,7 +2,7 @@ from typing import Dict, Tuple
 
 # Pricing per 1,000,000 tokens: (input_price_usd, output_price_usd)
 PRICING_TABLE_PER_1M: Dict[str, Tuple[float, float]] = {
-    "gemini-1.5-flash": (0.075, 0.30),
+    "gemini-2.5-flash": (0.075, 0.30),
     "gemini-1.5-pro": (1.25, 5.00),
     "claude-3-5-sonnet-20240620": (3.00, 15.00),
     "gpt-4o-mini": (0.15, 0.60),

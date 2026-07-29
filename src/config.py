@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # LLM Provider & Generation
     LLM_PROVIDER: Literal["gemini", "claude"] = Field(default="gemini", description="LLM provider for response generation")
     GEMINI_API_KEY: str = Field(default="", description="Gemini API Key")
-    GEMINI_MODEL: str = Field(default="gemini-1.5-flash", description="Gemini model name")
+    GEMINI_MODEL: str = Field(default="gemini-2.5-flash", description="Gemini model name")
     CLAUDE_API_KEY: str = Field(default="", description="Claude API Key")
     CLAUDE_MODEL: str = Field(default="claude-3-5-sonnet-20240620", description="Claude model name")
 

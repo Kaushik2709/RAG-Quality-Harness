@@ -35,7 +35,7 @@ def get_vector_store(
                 url=url,
                 api_key=api_key or None,
                 check_compatibility=False,
-                timeout=10.0
+                timeout=60.0
             )
         else:
             client = QdrantClient(
@@ -43,7 +43,7 @@ def get_vector_store(
                 port=settings.QDRANT_PORT,
                 api_key=api_key or None,
                 check_compatibility=False,
-                timeout=5.0
+                timeout=30.0
             )
 
         # Check/create collection if needed

@@ -59,7 +59,10 @@ def generate_node(state: RAGState) -> Dict[str, Any]:
 
     with trace_stage("generate", query_id=query_id, model_name=getattr(chat_model, "model_name", "langchain-llm")) as span:
         ai_message = chain.invoke({"query": query, "context": context_str})
-        answer = str(ai_message.content)
+        if isinstance(ai_message.content, list):
+            answer = "".join([part.get("text", "") if isinstance(part, dict) else str(part) for part in ai_message.content])
+        else:
+            answer = str(ai_message.content)
         span.set_tokens(tokens_in=len(context_str.split()), tokens_out=len(answer.split()))
 
     return {"generation": answer}

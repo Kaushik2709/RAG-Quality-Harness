@@ -90,7 +90,9 @@ def ingest_text(req: IngestTextRequest):
             raise HTTPException(status_code=400, detail="Text could not be chunked into valid pieces.")
 
         vstore = get_vector_store()
-        vstore.add_documents(chunks)
+        batch_size = 20
+        for i in range(0, len(chunks), batch_size):
+            vstore.add_documents(chunks[i:i + batch_size])
 
         return IngestResponse(doc_id=doc_id, chunks_created=len(chunks))
     except Exception as e:
@@ -106,46 +108,52 @@ async def ingest_file(
     """
     Ingests a document file (PDF, TXT, HTML, MD) by parsing, chunking, and embedding into vector store.
     """
-    try:
-        filename = file.filename or "uploaded_file"
-        suffix = os.path.splitext(filename)[1] or ".tmp"
+    filename = file.filename or "uploaded_file"
+    suffix = os.path.splitext(filename)[1] or ".tmp"
+    tmp_path = None
 
+    try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
             tmp.write(content)
+            tmp.flush()
             tmp_path = tmp.name
 
-        try:
-            docs = load_document(tmp_path)
-            if not docs or not any(d.page_content.strip() for d in docs):
-                raise HTTPException(status_code=400, detail=f"No readable text extracted from {filename}.")
+        docs = load_document(tmp_path)
+        if not docs or not any(d.page_content.strip() for d in docs):
+            raise HTTPException(status_code=400, detail=f"No readable text extracted from {filename}.")
 
-            for d in docs:
-                d.metadata["source"] = filename
-                d.metadata["file_name"] = filename
+        for d in docs:
+            d.metadata["source"] = filename
+            d.metadata["file_name"] = filename
 
-            chunks = chunk_documents(
-                docs,
-                strategy=strategy or settings.CHUNKER_STRATEGY,
-                chunk_size=chunk_size or settings.CHUNK_SIZE,
-                chunk_overlap=chunk_overlap or settings.CHUNK_OVERLAP
-            )
+        chunks = chunk_documents(
+            docs,
+            strategy=strategy or settings.CHUNKER_STRATEGY,
+            chunk_size=chunk_size or settings.CHUNK_SIZE,
+            chunk_overlap=chunk_overlap or settings.CHUNK_OVERLAP
+        )
 
-            if not chunks:
-                raise HTTPException(status_code=400, detail="Document could not be chunked into valid pieces.")
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Document could not be chunked into valid pieces.")
 
-            vstore = get_vector_store()
-            vstore.add_documents(chunks)
+        vstore = get_vector_store()
+        batch_size = 20
+        for i in range(0, len(chunks), batch_size):
+            vstore.add_documents(chunks[i:i + batch_size])
 
-            doc_id = docs[0].metadata.get("doc_id", filename)
-            return IngestResponse(doc_id=doc_id, chunks_created=len(chunks))
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+        doc_id = docs[0].metadata.get("doc_id", filename)
+        return IngestResponse(doc_id=doc_id, chunks_created=len(chunks))
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 @app.post("/query", response_model=QueryResponse)
 def query_rag(req: QueryRequest):

@@ -24,17 +24,23 @@ def build_reranked_retriever(
 
     try:
         try:
-            from langchain_community.document_compressors import CrossEncoderReranker
-            from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-            model = HuggingFaceCrossEncoder(model_name=m_name)
-            compressor = CrossEncoderReranker(model=model, top_n=top_k)
-            return ContextualCompressionRetriever(
-                base_compressor=compressor,
-                base_retriever=base_retriever
-            )
-        except (Exception, OSError) as inner_err:
-            print(f"[Reranker] Warning initializing HuggingFaceCrossEncoder ({inner_err}). Returning base retriever.")
-            return base_retriever
+            from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
+        except (ImportError, AttributeError):
+            try:
+                from langchain_community.document_compressors import CrossEncoderReranker
+            except (ImportError, AttributeError):
+                from langchain.retrievers.document_compressors import CrossEncoderReranker
+
+        from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+        model = HuggingFaceCrossEncoder(model_name=m_name)
+        compressor = CrossEncoderReranker(model=model, top_n=top_k)
+        return ContextualCompressionRetriever(
+            base_compressor=compressor,
+            base_retriever=base_retriever
+        )
+    except (Exception, OSError) as inner_err:
+        print(f"[Reranker] Warning initializing HuggingFaceCrossEncoder ({inner_err}). Returning base retriever.")
+        return base_retriever
     except (Exception, OSError) as e:
         print(f"[Reranker] Warning loading CrossEncoderReranker ({e}). Returning base retriever.")
         return base_retriever
