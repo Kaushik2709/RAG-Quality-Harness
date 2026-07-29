@@ -1,0 +1,18 @@
+Qdrant Vector Database Features and HNSW Indexing
+
+Qdrant is an open-source, high-performance vector search engine written in Rust. It provides fast and scalable vector storage and payload filtering for production AI applications.
+
+1. Payload Storage and Metadata Filtering
+In Qdrant, vectors are associated with JSON payloads containing arbitrary metadata (such as document IDs, tags, timestamps, or chunk indexes). Qdrant supports payload index filtering, allowing queries to restrict vector search results by metadata conditions without sacrificing search speed.
+
+2. Distance Metrics
+Qdrant supports three primary vector distance metrics:
+- Cosine Similarity: Measures the cosine of the angle between two vectors, ideal for normalized text embeddings.
+- Dot Product: Computes the inner product between vectors, useful for unnormalized embeddings.
+- Euclidean Distance (L2): Measures geometric distance between point coordinates.
+
+3. Quantization and Memory Optimization
+To handle billions of vectors efficiently, Qdrant offers Scalar Quantization (SQ) and Product Quantization (PQ). Quantization compresses 32-bit floating-point vectors into 8-bit integers, reducing RAM usage by up to 4x while maintaining over 95% retrieval accuracy.
+
+4. Collection Management
+Vectors in Qdrant are grouped into isolated units called Collections. Each collection can specify its vector dimension size, distance metric, HNSW index parameters (m, ef_construct), and replication factor across distributed nodes.

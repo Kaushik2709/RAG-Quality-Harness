@@ -1,0 +1,15 @@
+RAG Architecture and Retrieval Strategies Overview
+
+Retrieval-Augmented Generation (RAG) is an architectural pattern designed to enhance the accuracy and reliability of Large Language Models (LLMs) by fetching relevant facts from an external knowledge base before answering a query.
+
+1. Document Ingestion and Chunking
+Before documents can be searched, they must be converted into standard text chunks. Fixed-size chunking splits text at strict character count boundaries (e.g., 500 characters with 50 characters overlap). Recursive chunking hierarchically breaks text at paragraph breaks (\n\n), sentence breaks (. ), and word boundaries to maintain semantic context intact within each chunk.
+
+2. Dense Embeddings and Vector Databases
+Chunked texts are passed through embedding models such as BAAI/bge-small-en-v1.5 to convert textual semantics into dense numerical vectors of 384 dimensions. High-performance vector databases like Qdrant index these vectors using Hierarchical Navigable Small World (HNSW) graphs, enabling sub-millisecond approximate nearest neighbor (ANN) retrieval using cosine similarity.
+
+3. Hybrid Search and Reciprocal Rank Fusion
+While dense embeddings excel at semantic similarity, they can fail with exact keyword matches such as product IDs, code symbols, or names. Hybrid retrieval pairs dense cosine search with Sparse BM25 algorithms. Reciprocal Rank Fusion (RRF) combines rank positions from both retrievers to yield superior initial candidates.
+
+4. Cross-Encoder Reranking
+Top candidate chunks from initial retrieval (e.g., Top-10) are passed to a Cross-Encoder reranker like BAAI/bge-reranker-base. Unlike dual encoders which embed query and document independently, a Cross-Encoder computes joint attention across the full (query, document) pair, accurately scoring true relevance and filtering out false positive matches.

@@ -1,0 +1,24 @@
+OpenTelemetry Tracing and LLM-as-Judge Evaluation Harness
+
+Monitoring and evaluating RAG systems requires a combination of fine-grained telemetry tracing and structured evaluation metrics.
+
+1. OpenTelemetry Semantic Conventions for GenAI
+OpenTelemetry (OTel) defines standardized semantic attributes for AI applications under `gen_ai.*`. Key span attributes include:
+- `gen_ai.system`: Identifies the framework or platform (e.g., rag_eval_platform).
+- `gen_ai.pipeline.stage`: Identifies the operational stage (embed, retrieve, rerank, generate).
+- `gen_ai.request.model`: Specifies model identifiers (e.g., BAAI/bge-small-en-v1.5, gemini-1.5-flash).
+- `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens`: Track token consumption per stage.
+- `gen_ai.cost_usd`: Records calculated financial cost per query based on model pricing tables.
+
+2. Deterministic Retrieval Metrics
+Retrieval quality is measured against labeled expected document IDs using non-LLM mathematical functions:
+- Recall@K: Proportion of expected relevant documents present in the top-K retrieved list.
+- Precision@K: Proportion of top-K retrieved documents that are expected to be relevant.
+- Mean Reciprocal Rank (MRR): Inverse rank of the first relevant document retrieved.
+- Normalized Discounted Cumulative Gain (nDCG@K): Evaluates ranking order efficiency with logarithmic position discounting.
+
+3. LLM-as-Judge Groundedness and Hallucination Detection
+Generation quality is evaluated using an LLM Judge scoring structured output:
+- Faithfulness (0-1): Verifies that every claim in the generated answer is strictly supported by retrieved context chunks.
+- Answer Relevancy (0-1): Assesses if the generated response directly answers the input query without extraneous text.
+- Context Precision (0-1): Determines what fraction of retrieved context chunks contributed meaningfully to the final answer.
