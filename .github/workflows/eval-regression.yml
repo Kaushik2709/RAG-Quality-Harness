@@ -19,6 +19,7 @@ jobs:
 
     env:
       PYTHONPATH: .
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
     steps:
       - name: Checkout Codebase
