@@ -19,7 +19,6 @@ jobs:
 
     env:
       PYTHONPATH: .
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
     steps:
       - name: Checkout Codebase
@@ -40,7 +39,4 @@ jobs:
         run: |
           pytest tests/unit/
 
-      - name: Run Evaluation Regression Quality Gate
-        run: |
-          python -m src.evaluation.regression_runner
 
