@@ -17,6 +17,9 @@ jobs:
     name: Run RAG Quality Gate Suite
     runs-on: ubuntu-latest
 
+    env:
+      PYTHONPATH: .
+
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v4
@@ -39,3 +42,4 @@ jobs:
       - name: Run Evaluation Regression Quality Gate
         run: |
           python -m src.evaluation.regression_runner
+
