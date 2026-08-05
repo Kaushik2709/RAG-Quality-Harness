@@ -60,6 +60,8 @@ class QueryResponse(BaseModel):
     answer: str
     retrieved_context: List[ContextChunkResponse]
     total_latency_ms: float
+    guardrail_status: Optional[Dict[str, Any]] = None
+    guardrail_blocked: Optional[bool] = None
 
 @app.get("/")
 def read_root():
@@ -184,7 +186,9 @@ def query_rag(req: QueryRequest):
         query=req.query,
         answer=final_state.get("generation", ""),
         retrieved_context=context_resp,
-        total_latency_ms=0.0
+        total_latency_ms=0.0,
+        guardrail_status=final_state.get("guardrail_status"),
+        guardrail_blocked=final_state.get("guardrail_blocked")
     )
 
 @app.get("/traces")

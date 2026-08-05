@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: str = Field(default="", description="Claude API Key")
     CLAUDE_MODEL: str = Field(default="claude-3-5-sonnet-20240620", description="Claude model name")
 
+    # Security Guardrails
+    ENABLE_INPUT_GUARDRAILS: bool = Field(default=True, description="Enable regex-based input guardrails & prompt injection detection")
+    ENABLE_OUTPUT_GUARDRAILS: bool = Field(default=True, description="Enable output guardrails & secret/PII redaction")
+    GUARDRAIL_BLOCK_PROMPT_INJECTION: bool = Field(default=True, description="Block execution if prompt injection is detected")
+    GUARDRAIL_STRICT_MODE: bool = Field(default=False, description="Reject queries with any PII or sensitive data")
+
     # Regression & Evaluation Thresholds
     MIN_RECALL_THRESHOLD: float = Field(default=0.75, description="Minimum acceptable Recall@K ratio")
     MIN_FAITHFULNESS_THRESHOLD: float = Field(default=0.80, description="Minimum acceptable LLM-as-Judge Faithfulness score")

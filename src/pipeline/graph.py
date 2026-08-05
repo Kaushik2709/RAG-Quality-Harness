@@ -7,6 +7,7 @@ from src.retrieval.retriever import build_retriever
 from src.retrieval.reranker import build_reranked_retriever
 from src.generation.prompt_builder import build_chat_prompt_template
 from src.generation.generator import get_chat_model
+from src.guardrails.detector import get_input_guardrail, get_output_guardrail, GuardrailAction
 from src.tracing.tracer import trace_stage
 from src.config import settings
 
@@ -16,8 +17,41 @@ class RAGState(TypedDict):
     documents: List[Document]
     reranked_documents: List[Document]
     generation: str
+    guardrail_status: Optional[Dict[str, Any]]
+    guardrail_blocked: Optional[bool]
+
+def input_guardrail_node(state: RAGState) -> Dict[str, Any]:
+    query_id = state.get("query_id", "q-default")
+    query = state.get("query", "")
+
+    if not settings.ENABLE_INPUT_GUARDRAILS:
+        return {"guardrail_blocked": False, "guardrail_status": None}
+
+    with trace_stage("input_guardrail", query_id=query_id, model_name="regex_guardrail") as span:
+        guardrail = get_input_guardrail()
+        result = guardrail.validate(query)
+        span.set_tokens(tokens_in=len(query.split()), tokens_out=len(result.triggered_rules))
+
+        if result.action == GuardrailAction.BLOCKED:
+            return {
+                "guardrail_blocked": True,
+                "guardrail_status": result.to_dict(),
+                "generation": f"Query blocked by Security Input Guardrail: {result.reason}"
+            }
+        
+        updates: Dict[str, Any] = {
+            "guardrail_blocked": False,
+            "guardrail_status": result.to_dict()
+        }
+        if result.action == GuardrailAction.SANITIZED:
+            updates["query"] = result.sanitized_text
+
+        return updates
 
 def retrieve_node(state: RAGState) -> Dict[str, Any]:
+    if state.get("guardrail_blocked"):
+        return {}
+
     query_id = state.get("query_id", "q-default")
     query = state["query"]
 
@@ -30,6 +64,9 @@ def retrieve_node(state: RAGState) -> Dict[str, Any]:
     return {"documents": docs}
 
 def rerank_node(state: RAGState) -> Dict[str, Any]:
+    if state.get("guardrail_blocked"):
+        return {}
+
     query_id = state.get("query_id", "q-default")
     query = state["query"]
     input_docs = state.get("documents", [])
@@ -43,6 +80,9 @@ def rerank_node(state: RAGState) -> Dict[str, Any]:
     return {"reranked_documents": reranked_docs}
 
 def generate_node(state: RAGState) -> Dict[str, Any]:
+    if state.get("guardrail_blocked"):
+        return {}
+
     query_id = state.get("query_id", "q-default")
     query = state["query"]
     reranked = state.get("reranked_documents", [])
@@ -67,19 +107,57 @@ def generate_node(state: RAGState) -> Dict[str, Any]:
 
     return {"generation": answer}
 
+def output_guardrail_node(state: RAGState) -> Dict[str, Any]:
+    if state.get("guardrail_blocked"):
+        return {}
+
+    query_id = state.get("query_id", "q-default")
+    raw_generation = state.get("generation", "")
+
+    if not settings.ENABLE_OUTPUT_GUARDRAILS:
+        return {}
+
+    with trace_stage("output_guardrail", query_id=query_id, model_name="regex_guardrail") as span:
+        guardrail = get_output_guardrail()
+        result = guardrail.validate(raw_generation)
+        span.set_tokens(tokens_in=len(raw_generation.split()), tokens_out=len(result.triggered_rules))
+
+        existing_status = state.get("guardrail_status") or {}
+        combined_status = {
+            "input": existing_status,
+            "output": result.to_dict()
+        }
+
+        if result.action == GuardrailAction.SANITIZED:
+            return {
+                "generation": result.sanitized_text,
+                "guardrail_status": combined_status
+            }
+
+        return {"guardrail_status": combined_status}
+
+def route_input_guardrail(state: RAGState) -> str:
+    if state.get("guardrail_blocked"):
+        return END
+    return "retrieve"
+
 def compile_rag_graph():
     """
-    Compiles and returns the LangGraph StateGraph pipeline.
+    Compiles and returns the LangGraph StateGraph pipeline with input/output guardrails.
     """
     builder = StateGraph(RAGState)
 
+    builder.add_node("input_guardrail", input_guardrail_node)
     builder.add_node("retrieve", retrieve_node)
     builder.add_node("rerank", rerank_node)
     builder.add_node("generate", generate_node)
+    builder.add_node("output_guardrail", output_guardrail_node)
 
-    builder.set_entry_point("retrieve")
+    builder.set_entry_point("input_guardrail")
+    builder.add_conditional_edges("input_guardrail", route_input_guardrail)
     builder.add_edge("retrieve", "rerank")
     builder.add_edge("rerank", "generate")
-    builder.add_edge("generate", END)
+    builder.add_edge("generate", "output_guardrail")
+    builder.add_edge("output_guardrail", END)
 
     return builder.compile()
