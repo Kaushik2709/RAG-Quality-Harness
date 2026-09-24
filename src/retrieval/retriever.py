@@ -25,7 +25,7 @@ def build_retriever(
     """
     Returns a standard LangChain BaseRetriever (EnsembleRetriever for hybrid search).
     """
-    k = top_k or settings.TOP_K_RETRIEVAL
+    k = top_k if (top_k is not None and top_k > 0) else settings.TOP_K_RETRIEVAL
     hybrid = use_hybrid if use_hybrid is not None else settings.USE_HYBRID_SEARCH
 
     vstore = vectorstore or get_vector_store()

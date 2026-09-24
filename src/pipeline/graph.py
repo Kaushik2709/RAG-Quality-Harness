@@ -19,6 +19,9 @@ class RAGState(TypedDict):
     generation: str
     guardrail_status: Optional[Dict[str, Any]]
     guardrail_blocked: Optional[bool]
+    top_k: Optional[int]
+    top_k_rerank: Optional[int]
+    use_hybrid: Optional[bool]
 
 def input_guardrail_node(state: RAGState) -> Dict[str, Any]:
     query_id = state.get("query_id", "q-default")
@@ -54,10 +57,19 @@ def retrieve_node(state: RAGState) -> Dict[str, Any]:
 
     query_id = state.get("query_id", "q-default")
     query = state["query"]
+    req_k = state.get("top_k")
+    top_k = req_k if (req_k is not None and req_k > 0) else settings.TOP_K_RETRIEVAL
+    req_hybrid = state.get("use_hybrid")
+    use_hybrid = req_hybrid if req_hybrid is not None else settings.USE_HYBRID_SEARCH
 
     with trace_stage("retrieve", query_id=query_id, model_name=settings.EMBEDDING_MODEL) as span:
         vstore = get_vector_store()
-        retriever = build_retriever(vectorstore=vstore, documents=state.get("documents", []), top_k=settings.TOP_K_RETRIEVAL)
+        retriever = build_retriever(
+            vectorstore=vstore,
+            documents=state.get("documents", []),
+            top_k=top_k,
+            use_hybrid=use_hybrid
+        )
         docs = retriever.invoke(query)
         span.set_tokens(tokens_in=len(query.split()), tokens_out=len(docs))
 
@@ -70,11 +82,20 @@ def rerank_node(state: RAGState) -> Dict[str, Any]:
     query_id = state.get("query_id", "q-default")
     query = state["query"]
     input_docs = state.get("documents", [])
+    req_k = state.get("top_k")
+    top_k = req_k if (req_k is not None and req_k > 0) else settings.TOP_K_RETRIEVAL
+    req_rerank = state.get("top_k_rerank")
+    top_k_rerank = req_rerank if (req_rerank is not None and req_rerank > 0) else settings.TOP_K_RERANK
+    req_hybrid = state.get("use_hybrid")
+    use_hybrid = req_hybrid if req_hybrid is not None else settings.USE_HYBRID_SEARCH
 
     with trace_stage("rerank", query_id=query_id, model_name=settings.RERANKER_MODEL) as span:
-        base_retriever = build_retriever(documents=input_docs, top_k=settings.TOP_K_RETRIEVAL)
-        reranked_retriever = build_reranked_retriever(base_retriever, top_n=settings.TOP_K_RERANK)
-        reranked_docs = reranked_retriever.invoke(query)
+        if not input_docs:
+            reranked_docs = []
+        else:
+            base_retriever = build_retriever(documents=input_docs, top_k=top_k, use_hybrid=use_hybrid)
+            reranked_retriever = build_reranked_retriever(base_retriever, top_n=top_k_rerank)
+            reranked_docs = reranked_retriever.invoke(query)
         span.set_tokens(tokens_in=sum(len(d.page_content.split()) for d in reranked_docs), tokens_out=len(reranked_docs))
 
     return {"reranked_documents": reranked_docs}

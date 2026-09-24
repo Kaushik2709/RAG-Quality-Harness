@@ -67,6 +67,11 @@ yarn-error.log*
 *.sqlite3
 traces_local.db
 
+# Local agent config, generated graph output & personal docs
+.agents/
+graphify-out/
+RESUME_XFACTORS.md
+
 # IDE & Editors
 .vscode/
 !.vscode/settings.json

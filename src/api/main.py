@@ -159,7 +159,9 @@ async def ingest_file(
 
 @app.post("/query", response_model=QueryResponse)
 def query_rag(req: QueryRequest):
+    import time
     query_id = f"q-{uuid.uuid4()}"
+    start_time = time.perf_counter()
 
     # Execute LangGraph StateGraph pipeline
     initial_state = {
@@ -167,10 +169,14 @@ def query_rag(req: QueryRequest):
         "query_id": query_id,
         "documents": [],
         "reranked_documents": [],
-        "generation": ""
+        "generation": "",
+        "top_k": req.top_k,
+        "top_k_rerank": req.top_k_rerank,
+        "use_hybrid": req.use_hybrid
     }
 
     final_state = rag_graph.invoke(initial_state)
+    elapsed_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
     context_resp = [
         ContextChunkResponse(
@@ -186,7 +192,7 @@ def query_rag(req: QueryRequest):
         query=req.query,
         answer=final_state.get("generation", ""),
         retrieved_context=context_resp,
-        total_latency_ms=0.0,
+        total_latency_ms=elapsed_ms,
         guardrail_status=final_state.get("guardrail_status"),
         guardrail_blocked=final_state.get("guardrail_blocked")
     )

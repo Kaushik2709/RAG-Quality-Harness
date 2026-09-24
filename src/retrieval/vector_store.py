@@ -41,6 +41,8 @@ def get_vector_store(
             client = QdrantClient(
                 host=settings.QDRANT_HOST,
                 port=settings.QDRANT_PORT,
+                grpc_port=settings.QDRANT_GRPC_PORT,
+                prefer_grpc=settings.QDRANT_PREFER_GRPC,
                 api_key=api_key or None,
                 check_compatibility=False,
                 timeout=30.0
@@ -50,13 +52,25 @@ def get_vector_store(
         try:
             collections = [c.name for c in client.get_collections().collections]
             if col_name not in collections:
-                from qdrant_client.models import VectorParams, Distance
+                from qdrant_client.models import (
+                    VectorParams,
+                    Distance,
+                    ScalarQuantization,
+                    ScalarQuantizationConfig,
+                    ScalarType,
+                )
                 # Default dimension for text-embedding-004 is 768
                 sample_vec = emb.embed_query("test")
                 dim = len(sample_vec) if sample_vec else 768
                 client.create_collection(
                     collection_name=col_name,
-                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
+                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                    quantization_config=ScalarQuantization(
+                        scalar_quantile=ScalarQuantizationConfig(
+                            type=ScalarType.INT8,
+                            always_ram=True
+                        )
+                    )
                 )
         except Exception as col_err:
             print(f"[VectorStore] Notice checking/creating collection '{col_name}': {col_err}")

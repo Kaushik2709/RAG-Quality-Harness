@@ -41,6 +41,7 @@ services:
     environment:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - QDRANT_GRPC_PORT=6334
       - POSTGRES_URI=postgresql://rag_user:rag_password@postgres:5432/rag_traces
       - LLM_PROVIDER=${LLM_PROVIDER:-mock}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}

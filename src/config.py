@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     # Vector Store & Postgres
     QDRANT_HOST: str = Field(default="localhost", description="Qdrant host address")
     QDRANT_PORT: int = Field(default=6333, description="Qdrant HTTP port")
+    QDRANT_GRPC_PORT: int = Field(default=6334, description="Qdrant gRPC port")
+    QDRANT_PREFER_GRPC: bool = Field(default=True, description="Prefer gRPC over HTTP for Qdrant client")
     QDRANT_URL: str = Field(default="", description="Qdrant Cloud endpoint URL")
     QDRANT_API_KEY: str = Field(default="", description="Qdrant API Key")
     QDRANT_COLLECTION: str = Field(default="rag_documents", description="Qdrant collection name")
