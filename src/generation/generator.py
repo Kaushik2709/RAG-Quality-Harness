@@ -22,7 +22,9 @@ def get_chat_model(provider: Optional[str] = None) -> BaseChatModel:
             return ChatGoogleGenerativeAI(
                 model=settings.GEMINI_MODEL,
                 google_api_key=api_key,
-                temperature=0.0
+                temperature=0.0,
+                timeout=30,
+                max_retries=0
             )
         except Exception as e:
             raise RuntimeError(f"[Generator Error] Failed to initialize ChatGoogleGenerativeAI ({settings.GEMINI_MODEL}): {e}")
@@ -39,7 +41,9 @@ def get_chat_model(provider: Optional[str] = None) -> BaseChatModel:
             return ChatAnthropic(
                 model=settings.CLAUDE_MODEL,
                 anthropic_api_key=api_key,
-                temperature=0.0
+                temperature=0.0,
+                timeout=30,
+                max_retries=0
             )
         except Exception as e:
             raise RuntimeError(f"[Generator Error] Failed to initialize ChatAnthropic ({settings.CLAUDE_MODEL}): {e}")

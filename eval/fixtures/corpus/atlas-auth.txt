@@ -1,0 +1,3 @@
+Atlas authentication
+
+Atlas authentication requires a bearer token. Rotate bearer tokens every 60 days.

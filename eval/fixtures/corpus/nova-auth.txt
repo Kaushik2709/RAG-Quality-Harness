@@ -1,0 +1,3 @@
+Nova authentication
+
+Nova authentication requires mutual TLS certificates. Renew certificates every 180 days.

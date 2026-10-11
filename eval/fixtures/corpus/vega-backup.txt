@@ -1,0 +1,3 @@
+Vega backup policy
+
+Vega backups run every 6 hours. Recovery uses the latest verified snapshot.

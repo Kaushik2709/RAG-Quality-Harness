@@ -1,6 +1,6 @@
 # ⚡ Production RAG Evaluation & Observability Platform (LangGraph & LangChain)
 
-A production-grade RAG (Retrieval-Augmented Generation) system powered natively by **LangChain** and **LangGraph**, built to empirically prove that **retrieval quality and hallucination detection — not just retrieval itself — are the core challenge in RAG**.
+A RAG (Retrieval-Augmented Generation) evaluation project powered natively by **LangChain** and **LangGraph**, built to empirically prove that **retrieval quality and hallucination detection — not just retrieval itself — are the core challenge in RAG**.
 
 Equipped with an OpenTelemetry tracing harness (`gen_ai.*` semantic conventions), deterministic retrieval metrics (Recall@K, Precision@K, MRR, nDCG), LLM-as-Judge groundedness evaluation, automated regression CI quality gates, and a Next.js analytics dashboard.
 
@@ -56,61 +56,85 @@ Equipped with an OpenTelemetry tracing harness (`gen_ai.*` semantic conventions)
 
 - **Document Loaders**: `langchain_community.document_loaders` (`TextLoader`, `PyPDFLoader`, `BSHTMLLoader`)
 - **Text Splitters**: `langchain_text_splitters` (`RecursiveCharacterTextSplitter`, `CharacterTextSplitter`)
-- **Embeddings**: `langchain_google_genai.GoogleGenerativeAIEmbeddings` (model: `models/text-embedding-004`)
+- **Embeddings**: `langchain_google_genai.GoogleGenerativeAIEmbeddings` (model: `models/gemini-embedding-001`)
 - **Vector Storage**: `langchain_qdrant` (`QdrantVectorStore` with `InMemoryVectorStore` fallback)
-- **Hybrid Retrievers**: LangChain `EnsembleRetriever` combining dense vector search with sparse `BM25Retriever`
+- **Hybrid Retrievers**: Explicit full-corpus BM25Okapi and dense retrieval combined by weighted reciprocal rank fusion
 - **Rerankers**: LangChain `ContextualCompressionRetriever` with Cross-Encoder compression
 - **Prompts**: `langchain_core.prompts.ChatPromptTemplate`
-- **LLM Models**: `langchain_google_genai.ChatGoogleGenerativeAI` (model: `gemini-1.5-flash`)
+- **LLM Models**: `langchain_google_genai.ChatGoogleGenerativeAI` (model: `gemini-2.5-flash`)
 - **Orchestration**: LangGraph `StateGraph` (`src/pipeline/graph.py`)
+
+---
+
+## 📁 Project Structure
+
+```text
+RAG-Quality-Harness/
+├── src/                          # Core backend and RAG engine
+│   ├── api/                      # FastAPI REST application
+│   │   └── main.py               # API endpoints, Swagger docs, health checks
+│   ├── evaluation/               # Evaluation & quality gate regression framework
+│   │   ├── golden_dataset.py     # Evaluation dataset loader & validation
+│   │   ├── judge.py              # LLM-as-a-Judge evaluation engine
+│   │   ├── judge_prompts.py      # Structured evaluation & groundedness prompts
+│   │   ├── regression_runner.py  # CI/CD regression test runner & threshold gates
+│   │   └── retrieval_metrics.py  # Deterministic IR metrics (Recall@K, MRR, nDCG)
+│   ├── generation/               # LLM generation & synthesis
+│   │   ├── generator.py          # ChatGoogleGenerativeAI invocation & responses
+│   │   └── prompt_builder.py     # ChatPromptTemplate assembly & context formatting
+│   ├── guardrails/               # Safety & hallucination detection guardrails
+│   │   ├── detector.py           # Real-time hallucination & groundedness detector
+│   │   └── regex_patterns.py     # PII & prompt injection pattern matching
+│   ├── ingestion/                # Document processing pipeline
+│   │   ├── chunker.py            # LangChain text splitters (recursive character)
+│   │   ├── embedder.py           # Embeddings generator (Google Generative AI)
+│   │   └── loaders.py            # Document loaders (PDF, HTML, text)
+│   ├── pipeline/                 # Pipeline orchestration
+│   │   └── graph.py              # LangGraph StateGraph workflow definition
+│   ├── retrieval/                # Multi-stage retrieval system
+│   │   ├── reranker.py           # ContextualCompressionRetriever & Cross-Encoder
+│   │   ├── retriever.py          # Hybrid EnsembleRetriever (Dense + BM25)
+│   │   └── vector_store.py       # Qdrant vector database connector & fallback
+│   ├── tracing/                  # OpenTelemetry observability & telemetry
+│   │   ├── cost.py               # Token usage & per-query USD cost tracking
+│   │   ├── exporter.py           # OTel spans exporter & SQLite trace persistence
+│   │   └── tracer.py             # GenAI semantic conventions instrumentation
+│   └── config.py                 # Central configuration (Pydantic Settings)
+├── dashboard/                    # Next.js 14 Analytics Dashboard
+│   └── src/app/                  # App Router pages
+│       ├── evals/                # Evaluation trends, regression diffs & charts
+│       ├── traces/               # OpenTelemetry trace explorer & span details
+│       ├── layout.tsx            # Global dashboard layout & navigation
+│       └── page.tsx              # Analytics overview & system health
+├── data/                         # Knowledge base documents
+│   └── sample_docs/              # Markdown & text documents for indexing
+├── eval/                         # Evaluation artifacts & benchmarks
+│   └── golden_dataset.jsonl      # Curated ground-truth Q&A evaluation pairs
+├── infra/                        # Infrastructure & deployment configuration
+│   ├── docker-compose.yml        # Multi-container stack (API, Qdrant, DB, Web)
+│   ├── Dockerfile.api            # Container definition for FastAPI backend
+│   └── init.sql                  # PostgreSQL trace & eval database schema
+├── tests/                        # Automated test suite
+│   └── unit/                     # Unit test modules (Pytest)
+│       ├── test_chunker.py       # Chunking & splitting tests
+│       ├── test_guardrails.py    # Guardrail & detector unit tests
+│       ├── test_judge.py         # LLM judge logic tests
+│       └── test_metrics.py       # IR retrieval metrics math tests
+├── .env.example                  # Template for required environment variables
+├── pytest.ini                    # Pytest configuration
+├── requirements.txt              # Production & development Python dependencies
+└── README.md                     # Project documentation
+```
 
 ---
 
 ## 🎯 WORKED EXAMPLE: Catching a Retrieval & Groundedness Regression
 
-### Step 1: Run Baseline Evaluation
-Run the regression harness against the golden dataset:
-```bash
-python -m src.evaluation.regression_runner --accept-baseline
-```
-**Baseline Results:**
-- `Recall@5`: **0.9000**
-- `MRR`: **0.9500**
-- `Mean Faithfulness`: **0.9500**
-- Status: **PASS** ✅
+The historical worked-example scores (90% Recall@5, MRR 0.95, faithfulness 0.95) and the 65% to 90% resume claim are **unverified**. They were not produced by a reproducible run of the original harness and must not be cited as measured results.
 
----
+See [EVALUATION_REPORT.md](EVALUATION_REPORT.md) for executed tests and actual results, and [eval/METHODOLOGY.md](eval/METHODOLOGY.md) for provenance, exact metrics, commands and limitations.
 
-### Step 2: Introduce a Sub-optimal Configuration Change
-Simulate a developer reducing the chunk size to **40 characters** in `src/config.py`:
-
-Edit `src/config.py`:
-```python
-CHUNK_SIZE = 40  # Regression test: tiny chunk size
-```
-
----
-
-### Step 3: Execute Regression Quality Gate
-Run the regression harness:
-```bash
-python -m src.evaluation.regression_runner
-```
-
-**Console Output Flagging the Quality Breach:**
-```text
-=======================================================
-[BASELINE COMPARISON] Regression Test Results vs Baseline
-=======================================================
- [FAIL]  recall_at_5               | Current: 0.6000 | Baseline: 0.9000 | Diff: -0.3000 | Status: FAIL (RECALL REGRESSION)
- [FAIL]  mean_faithfulness         | Current: 0.7200 | Baseline: 0.9500 | Diff: -0.2300 | Status: FAIL (FAITHFULNESS BREACH)
-
-[FAILURE] REGRESSION FAILURE DETECTED: Quality gates breached! Exit Code 1
-```
-
----
-
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
 ### 1. Installation & Environment Setup
 ```bash
@@ -128,8 +152,8 @@ Create `.env` file in root:
 ```env
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-1.5-flash
-EMBEDDING_MODEL=models/text-embedding-004
+GEMINI_MODEL=gemini-2.5-flash
+EMBEDDING_MODEL=models/gemini-embedding-001
 ```
 
 ### 3. Run API Server
@@ -150,3 +174,22 @@ npm install
 npm run dev
 ```
 Dashboard URL: [http://localhost:3000](http://localhost:3000)
+
+
+## Reproducible retrieval regression
+
+Offline tests need no credentials or model downloads:
+
+```bash
+pip install -r requirements-offline.txt  # Python 3.14; runtime application dependencies remain in requirements.txt
+python -m pytest -q
+python -m src.evaluation.regression_runner --dataset eval/fixtures/queries.jsonl --corpus eval/fixtures/corpus --mode hybrid --min-recall 0.9
+```
+
+Repeat with `--mode dense` and `--mode bm25` to compare configurations. `--mode hybrid-rerank --backend local` uses the real cross-encoder and local semantic embeddings; model weights must be available. `--backend google --judge` explicitly enables paid embeddings, generation and judge evaluation. Offline hash embeddings are a deterministic lexical fixture, not a semantic quality benchmark.
+
+Retrieval evaluation creates a fresh isolated in-memory store and indexes every corpus document once. The graph accepts an explicit vector store and corpus through `compile_rag_graph(vector_store=..., corpus_documents=...)`. The API shares its process-local default store for ingestion/query fallback; BM25 reads the entire indexed collection rather than previous result state, and reranking compresses existing candidates. Qdrant collections with legacy/missing chunk IDs require reingestion. Default collection reads are not an atomic snapshot during concurrent production ingestion.
+
+Offline CI executes unit tests and three retrieval configurations on 28 explicitly synthetic queries over 16 fixture documents. The inherited 10-query sample is preserved with unverified annotation provenance. Missing judge credentials produce an unavailable status and CLI exit 2; skipped scores stay absent rather than being presented as zero or invented dashboard numbers. Reports contain SHA-256 fingerprints, configuration, installed versions, per-query errors/misses and p50/p95 stage timings. Baselines are created only with `--accept-baseline` and compared only with explicit `--baseline`.
+
+Runtime defaults: Google `models/gemini-embedding-001`, Gemini `gemini-2.5-flash`, local fallback `BAAI/bge-small-en-v1.5`, reranker `BAAI/bge-reranker-base`. These are configured model identifiers, not assertions about provider availability. Cloud/local results and exact billing measurements have not been verified in this repair. See the methodology for supported resume statements and known limitations.

@@ -1,0 +1,3 @@
+Nova timeout handling
+
+Nova requests have a 45 second timeout. Timeout errors are not retried automatically.

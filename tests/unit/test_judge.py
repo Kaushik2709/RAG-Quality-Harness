@@ -38,3 +38,31 @@ def test_judge_structured_output():
     assert len(res.faithfulness_reasoning) > 0
 
 
+
+
+@pytest.mark.parametrize("response", ["not json", "{}", '{"faithfulness": 2}', '{"faithfulness": NaN}'])
+def test_invalid_judge_response(response):
+    class InvalidModel(DummyLLMChatModel):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=response))])
+    with pytest.raises(ValueError):
+        LLMJudge(chat_model=InvalidModel()).evaluate("query", "context", "answer")
+
+
+def test_judge_timeout():
+    class TimeoutModel(DummyLLMChatModel):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            raise TimeoutError("provider timeout")
+    with pytest.raises(TimeoutError):
+        LLMJudge(chat_model=TimeoutModel()).evaluate("query", "context", "answer")
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -0.1, 1.1])
+def test_judge_scores_reject_nonfinite_or_out_of_range(score):
+    class InvalidScoreModel(DummyLLMChatModel):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            payload = {"faithfulness": score, "answer_relevancy": .5, "context_precision": .5,
+                       "faithfulness_reasoning": "test", "answer_relevancy_reasoning": "test", "context_precision_reasoning": "test"}
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=json.dumps(payload)))])
+    with pytest.raises(ValueError):
+        LLMJudge(chat_model=InvalidScoreModel()).evaluate("query", "context", "answer")

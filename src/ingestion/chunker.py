@@ -42,8 +42,13 @@ def get_text_splitter(
     Returns a standard TextSplitter instance (LangChain or Pure Python Fallback).
     """
     strat = strategy or settings.CHUNKER_STRATEGY
-    c_size = chunk_size or settings.CHUNK_SIZE
-    c_overlap = chunk_overlap or settings.CHUNK_OVERLAP
+    c_size = chunk_size if chunk_size is not None else settings.CHUNK_SIZE
+    c_overlap = chunk_overlap if chunk_overlap is not None else settings.CHUNK_OVERLAP
+
+    if c_size <= 0 or c_overlap < 0 or c_overlap >= c_size:
+        raise ValueError("Require chunk_size > chunk_overlap >= 0")
+    if strat not in {"fixed", "recursive"}:
+        raise ValueError("Unknown chunking strategy")
 
     try:
         if strat == "fixed":
@@ -73,11 +78,15 @@ def chunk_documents(
     splitter = get_text_splitter(strategy=strategy, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     chunks = splitter.split_documents(docs)
 
-    # Attach chunk indexing metadata
-    for idx, c in enumerate(chunks):
-        doc_id = c.metadata.get("doc_id", c.metadata.get("source", "doc"))
-        c.metadata["chunk_id"] = f"{doc_id}_c{idx}"
-        c.metadata["chunk_index"] = idx
-
+    # Content identity and per-document position are stable across corpus ordering.
+    import hashlib
+    counts = {}
+    for c in chunks:
+        doc_id = c.metadata.get("doc_id") or c.metadata.get("source")
+        if not doc_id:
+            raise ValueError("Documents require a stable doc_id or source")
+        idx = counts.get(doc_id, 0)
+        counts[doc_id] = idx + 1
+        digest = hashlib.sha256(c.page_content.encode("utf-8")).hexdigest()[:16]
+        c.metadata.update(doc_id=doc_id, chunk_id=f"{doc_id}::c{idx}::{digest}", chunk_index=idx)
     return chunks
-

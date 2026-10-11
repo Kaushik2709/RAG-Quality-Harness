@@ -1,0 +1,3 @@
+Lyra export formats
+
+Lyra audit exports support Parquet only. Export jobs run weekly on Monday.

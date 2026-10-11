@@ -18,7 +18,7 @@ class GoldenTriple(BaseModel):
 
     @field_validator("expected_relevant_doc_ids")
     def doc_ids_not_empty(cls, v: List[str]) -> List[str]:
-        if not v:
+        if not v or any(not x.strip() for x in v) or len(set(v)) != len(v):
             raise ValueError("expected_relevant_doc_ids must contain at least one document ID.")
         return v
 
@@ -34,6 +34,8 @@ def load_golden_dataset(file_path: str = "eval/golden_dataset.jsonl") -> List[Go
                 triples.append(GoldenTriple(**data))
             except Exception as e:
                 raise ValueError(f"Error parsing line {line_num} in golden dataset ({file_path}): {e}")
+    if not triples or len({t.query_id for t in triples}) != len(triples):
+        raise ValueError("Dataset must be nonempty with unique query IDs")
     return triples
 
 def save_golden_dataset(triples: List[GoldenTriple], file_path: str = "eval/golden_dataset.jsonl") -> None:

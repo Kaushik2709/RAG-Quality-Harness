@@ -1,0 +1,3 @@
+Rigel backup policy
+
+Rigel backups run every 24 hours. Recovery requires operator approval.

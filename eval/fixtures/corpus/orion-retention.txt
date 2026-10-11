@@ -1,0 +1,3 @@
+Orion retention policy
+
+Orion audit logs are retained for 30 days. Export logs before expiration.

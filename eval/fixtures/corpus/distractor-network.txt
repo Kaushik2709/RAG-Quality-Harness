@@ -1,0 +1,1 @@
+A network timeout can indicate packet loss. Network tools inspect DNS and routes.

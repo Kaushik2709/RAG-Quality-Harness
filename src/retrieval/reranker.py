@@ -3,18 +3,11 @@ from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from src.config import settings
 
-try:
-    from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
-except (ImportError, OSError):
-    try:
-        from langchain.retrievers import ContextualCompressionRetriever
-    except (ImportError, OSError):
-        from langchain.retrievers.document_compressors import ContextualCompressionRetriever
-
 def build_reranked_retriever(
     base_retriever: BaseRetriever,
     model_name: Optional[str] = None,
-    top_n: Optional[int] = None
+    top_n: Optional[int] = None,
+    strict: bool = False
 ) -> BaseRetriever:
     """
     Wraps a LangChain BaseRetriever with a CrossEncoder reranking compressor.
@@ -23,6 +16,10 @@ def build_reranked_retriever(
     top_k = top_n or settings.TOP_K_RERANK
 
     try:
+        try:
+            from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
+        except ImportError:
+            from langchain.retrievers import ContextualCompressionRetriever
         try:
             from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
         except (ImportError, AttributeError):
@@ -39,9 +36,7 @@ def build_reranked_retriever(
             base_retriever=base_retriever
         )
     except (Exception, OSError) as inner_err:
+        if strict:
+            raise RuntimeError("Cross-encoder unavailable") from inner_err
         print(f"[Reranker] Warning initializing HuggingFaceCrossEncoder ({inner_err}). Returning base retriever.")
         return base_retriever
-    except (Exception, OSError) as e:
-        print(f"[Reranker] Warning loading CrossEncoderReranker ({e}). Returning base retriever.")
-        return base_retriever
-

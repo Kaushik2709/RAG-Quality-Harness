@@ -1,0 +1,3 @@
+Rigel deletion policy
+
+Rigel deletion requests are immediate and irreversible. No grace period is provided.

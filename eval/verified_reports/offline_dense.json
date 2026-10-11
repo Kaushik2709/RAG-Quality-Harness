@@ -1,0 +1,1370 @@
+{
+  "schema_version": 2,
+  "timestamp": "2026-10-11T07:29:25.330683+00:00",
+  "status": "completed",
+  "total_queries": 28,
+  "dataset": {
+    "path": "eval\\fixtures\\queries.jsonl",
+    "sha256": "189d13f021eefac7d5bf6cd029ff1a0babc30e08923095c4988288f086c08435",
+    "corpus_sha256": "cd6418753e99d45f734bb3c22ff006a67e83e627d7b9897dcab1c0bbbe2b191a",
+    "documents": 16,
+    "chunks": 16,
+    "label_provenance": "See eval/METHODOLOGY.md; labels are not asserted manually verified"
+  },
+  "config": {
+    "mode": "dense",
+    "backend": "offline",
+    "candidate_k": 10,
+    "k": 5,
+    "chunk_size": 500,
+    "chunk_overlap": 50,
+    "chunk_strategy": "recursive",
+    "fusion_weights": [
+      0.6,
+      0.4
+    ],
+    "rrf_constant": 60,
+    "embedding_model": "sha256-lexical-512-v1",
+    "reranker_model": null
+  },
+  "versions": {
+    "python": "3.14.3",
+    "PyYAML": "6.0.3",
+    "Pygments": "2.21.0",
+    "annotated-doc": "0.0.5",
+    "annotated-types": "0.8.0",
+    "anyio": "4.15.1",
+    "certifi": "2026.7.22",
+    "charset-normalizer": "3.5.2",
+    "colorama": "0.4.6",
+    "distro": "1.9.0",
+    "fastapi": "0.140.8",
+    "h11": "0.16.0",
+    "httpcore": "1.0.9",
+    "httpcore2": "2.13.1",
+    "httpx": "0.28.1",
+    "httpx2": "2.13.1",
+    "idna": "3.20",
+    "iniconfig": "2.3.1",
+    "jsonpatch": "1.35",
+    "jsonpointer": "3.2.1",
+    "langchain-core": "1.5.2",
+    "langchain-protocol": "0.0.19",
+    "langchain-text-splitters": "1.1.2",
+    "langgraph": "1.2.10",
+    "langgraph-checkpoint": "4.2.0",
+    "langgraph-prebuilt": "1.1.0",
+    "langgraph-sdk": "0.4.6",
+    "langsmith": "0.14.7",
+    "numpy": "2.5.1",
+    "opentelemetry-api": "1.44.0",
+    "orjson": "3.13.0",
+    "ormsgpack": "1.12.2",
+    "packaging": "26.3",
+    "pip": "25.3",
+    "pluggy": "1.6.0",
+    "pydantic": "2.13.4",
+    "pydantic-settings": "2.14.2",
+    "pydantic_core": "2.46.4",
+    "pytest": "9.1.1",
+    "python-dotenv": "1.2.4",
+    "python-multipart": "0.0.32",
+    "rank-bm25": "0.2.2",
+    "requests": "2.34.2",
+    "requests-toolbelt": "1.0.0",
+    "sniffio": "1.3.1",
+    "starlette": "1.7.0",
+    "tenacity": "9.2.1",
+    "truststore": "0.10.4",
+    "typing-inspection": "0.4.4",
+    "typing_extensions": "4.16.0",
+    "urllib3": "2.8.0",
+    "uuid_utils": "0.17.1",
+    "websockets": "16.1.1",
+    "xxhash": "4.0.1",
+    "zstandard": "0.25.0"
+  },
+  "judge_status": "skipped",
+  "usage": {
+    "tokens": null,
+    "cost_usd": null,
+    "status": "not measured"
+  },
+  "metrics": {
+    "recall_at_5": 1.0,
+    "precision_at_5": 0.2285714285714286,
+    "mrr": 0.9642857142857143,
+    "ndcg_at_5": 0.9758698627567403
+  },
+  "details": [
+    {
+      "query_id": "synthetic-orion-retention",
+      "query": "How long does Orion retain audit logs?",
+      "expected_docs": [
+        "orion-retention.txt"
+      ],
+      "retrieved_docs": [
+        "orion-retention.txt",
+        "orion-export.txt",
+        "lyra-retention.txt",
+        "distractor-astronomy.txt",
+        "rigel-backup.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "lyra-export.txt",
+        "atlas-auth.txt",
+        "nova-auth.txt"
+      ],
+      "retrieved_chunks": [
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "nova-auth.txt::c0::7663d4df0437c75f"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 10.179899982176721,
+        "dense": 0.6021999870426953,
+        "query_total": 10.217699978966266
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-orion-retention-hard",
+      "query": "Find the policy for orion retention policy and explain its requirements.",
+      "expected_docs": [
+        "orion-retention.txt"
+      ],
+      "retrieved_docs": [
+        "orion-retention.txt",
+        "vega-backup.txt",
+        "lyra-retention.txt",
+        "orion-export.txt",
+        "rigel-backup.txt",
+        "rigel-delete.txt",
+        "distractor-database.txt",
+        "vega-delete.txt",
+        "distractor-cooking.txt",
+        "distractor-astronomy.txt"
+      ],
+      "retrieved_chunks": [
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "distractor-cooking.txt::c0::96fdaf719cba828f",
+        "distractor-astronomy.txt::c0::772de31acf1cec07"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.4512000014074147,
+        "dense": 0.387999985832721,
+        "query_total": 0.4765000194311142
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-orion-export",
+      "query": "Which export formats does Orion support?",
+      "expected_docs": [
+        "orion-export.txt"
+      ],
+      "retrieved_docs": [
+        "orion-export.txt",
+        "orion-retention.txt",
+        "lyra-export.txt",
+        "distractor-astronomy.txt",
+        "rigel-backup.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "nova-auth.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "nova-timeout.txt::c0::369080401f2d9d11"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.45329995919018984,
+        "dense": 0.4110999871045351,
+        "query_total": 0.4754000110551715
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-orion-export-hard",
+      "query": "Find the policy for orion export formats and explain its requirements.",
+      "expected_docs": [
+        "orion-export.txt"
+      ],
+      "retrieved_docs": [
+        "orion-export.txt",
+        "orion-retention.txt",
+        "vega-backup.txt",
+        "lyra-export.txt",
+        "distractor-database.txt",
+        "distractor-network.txt",
+        "rigel-backup.txt",
+        "lyra-retention.txt",
+        "rigel-delete.txt",
+        "distractor-cooking.txt"
+      ],
+      "retrieved_chunks": [
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-cooking.txt::c0::96fdaf719cba828f"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.4036999889649451,
+        "dense": 0.3651999868452549,
+        "query_total": 0.42320002103224397
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-lyra-retention",
+      "query": "How long does Lyra retain audit logs?",
+      "expected_docs": [
+        "lyra-retention.txt"
+      ],
+      "retrieved_docs": [
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "lyra-export.txt",
+        "distractor-astronomy.txt",
+        "distractor-network.txt",
+        "atlas-auth.txt",
+        "orion-export.txt",
+        "nova-auth.txt",
+        "vega-delete.txt",
+        "atlas-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.37809996865689754,
+        "dense": 0.34600001526996493,
+        "query_total": 0.39679999463260174
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-lyra-retention-hard",
+      "query": "Find the policy for lyra retention policy and explain its requirements.",
+      "expected_docs": [
+        "lyra-retention.txt"
+      ],
+      "retrieved_docs": [
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "distractor-database.txt",
+        "rigel-backup.txt",
+        "lyra-export.txt",
+        "orion-export.txt",
+        "vega-delete.txt",
+        "distractor-cooking.txt"
+      ],
+      "retrieved_chunks": [
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "distractor-cooking.txt::c0::96fdaf719cba828f"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3866999759338796,
+        "dense": 0.3564999788068235,
+        "query_total": 0.40469999657943845
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-lyra-export",
+      "query": "Which export formats does Lyra support?",
+      "expected_docs": [
+        "lyra-export.txt"
+      ],
+      "retrieved_docs": [
+        "lyra-export.txt",
+        "orion-export.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "distractor-astronomy.txt",
+        "distractor-network.txt",
+        "vega-delete.txt",
+        "vega-backup.txt",
+        "nova-auth.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "nova-timeout.txt::c0::369080401f2d9d11"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.36860001273453236,
+        "dense": 0.33760000951588154,
+        "query_total": 0.3856000257655978
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-lyra-export-hard",
+      "query": "Find the policy for lyra export formats and explain its requirements.",
+      "expected_docs": [
+        "lyra-export.txt"
+      ],
+      "retrieved_docs": [
+        "lyra-export.txt",
+        "orion-export.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "distractor-database.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "distractor-cooking.txt",
+        "distractor-astronomy.txt"
+      ],
+      "retrieved_chunks": [
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-cooking.txt::c0::96fdaf719cba828f",
+        "distractor-astronomy.txt::c0::772de31acf1cec07"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.394799979403615,
+        "dense": 0.3640999784693122,
+        "query_total": 0.4124999977648258
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-atlas-timeout",
+      "query": "What is the Atlas request timeout?",
+      "expected_docs": [
+        "atlas-timeout.txt"
+      ],
+      "retrieved_docs": [
+        "atlas-timeout.txt",
+        "nova-timeout.txt",
+        "atlas-auth.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "distractor-database.txt",
+        "vega-delete.txt",
+        "nova-auth.txt",
+        "orion-export.txt"
+      ],
+      "retrieved_chunks": [
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "orion-export.txt::c0::cf60e1a40085aa80"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.431500026024878,
+        "dense": 0.401899975258857,
+        "query_total": 0.45250001130625606
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-atlas-timeout-hard",
+      "query": "Find the policy for atlas timeout handling and explain its requirements.",
+      "expected_docs": [
+        "atlas-timeout.txt"
+      ],
+      "retrieved_docs": [
+        "atlas-timeout.txt",
+        "nova-timeout.txt",
+        "atlas-auth.txt",
+        "distractor-database.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "rigel-delete.txt",
+        "orion-export.txt"
+      ],
+      "retrieved_chunks": [
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "orion-export.txt::c0::cf60e1a40085aa80"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.38049998693168163,
+        "dense": 0.3494000411592424,
+        "query_total": 0.39900001138448715
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-atlas-auth",
+      "query": "How does Atlas authentication work?",
+      "expected_docs": [
+        "atlas-auth.txt"
+      ],
+      "retrieved_docs": [
+        "atlas-auth.txt",
+        "nova-auth.txt",
+        "atlas-timeout.txt",
+        "vega-delete.txt",
+        "rigel-backup.txt",
+        "orion-retention.txt",
+        "rigel-delete.txt",
+        "vega-backup.txt",
+        "nova-timeout.txt",
+        "orion-export.txt"
+      ],
+      "retrieved_chunks": [
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "orion-export.txt::c0::cf60e1a40085aa80"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.37369999336078763,
+        "dense": 0.3456000122241676,
+        "query_total": 0.39059994742274284
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-atlas-auth-hard",
+      "query": "Find the policy for atlas authentication and explain its requirements.",
+      "expected_docs": [
+        "atlas-auth.txt"
+      ],
+      "retrieved_docs": [
+        "atlas-auth.txt",
+        "distractor-database.txt",
+        "vega-backup.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "rigel-delete.txt",
+        "orion-export.txt",
+        "nova-auth.txt",
+        "atlas-timeout.txt",
+        "distractor-cooking.txt"
+      ],
+      "retrieved_chunks": [
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "distractor-cooking.txt::c0::96fdaf719cba828f"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3622000222094357,
+        "dense": 0.3342999843880534,
+        "query_total": 0.37920003524050117
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-nova-timeout",
+      "query": "What is the Nova request timeout?",
+      "expected_docs": [
+        "nova-timeout.txt"
+      ],
+      "retrieved_docs": [
+        "nova-timeout.txt",
+        "atlas-timeout.txt",
+        "nova-auth.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "distractor-database.txt",
+        "rigel-backup.txt",
+        "orion-retention.txt",
+        "orion-export.txt"
+      ],
+      "retrieved_chunks": [
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "orion-export.txt::c0::cf60e1a40085aa80"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3776000230573118,
+        "dense": 0.3507999936118722,
+        "query_total": 0.3951000398956239
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-nova-timeout-hard",
+      "query": "Find the policy for nova timeout handling and explain its requirements.",
+      "expected_docs": [
+        "nova-timeout.txt"
+      ],
+      "retrieved_docs": [
+        "nova-timeout.txt",
+        "atlas-timeout.txt",
+        "distractor-database.txt",
+        "distractor-network.txt",
+        "lyra-retention.txt",
+        "vega-backup.txt",
+        "orion-retention.txt",
+        "rigel-delete.txt",
+        "atlas-auth.txt",
+        "orion-export.txt"
+      ],
+      "retrieved_chunks": [
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "orion-export.txt::c0::cf60e1a40085aa80"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3662999952211976,
+        "dense": 0.3383000148460269,
+        "query_total": 0.38299994776025414
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-nova-auth",
+      "query": "How does Nova authentication work?",
+      "expected_docs": [
+        "nova-auth.txt"
+      ],
+      "retrieved_docs": [
+        "nova-auth.txt",
+        "atlas-auth.txt",
+        "nova-timeout.txt",
+        "vega-delete.txt",
+        "rigel-backup.txt",
+        "rigel-delete.txt",
+        "orion-export.txt",
+        "vega-backup.txt",
+        "orion-retention.txt",
+        "lyra-retention.txt"
+      ],
+      "retrieved_chunks": [
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "lyra-retention.txt::c0::0a47085de4dc39e5"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.360800011549145,
+        "dense": 0.3336999798193574,
+        "query_total": 0.3782000276260078
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-nova-auth-hard",
+      "query": "Find the policy for nova authentication and explain its requirements.",
+      "expected_docs": [
+        "nova-auth.txt"
+      ],
+      "retrieved_docs": [
+        "nova-auth.txt",
+        "distractor-database.txt",
+        "lyra-retention.txt",
+        "vega-backup.txt",
+        "orion-retention.txt",
+        "rigel-delete.txt",
+        "atlas-auth.txt",
+        "orion-export.txt",
+        "nova-timeout.txt",
+        "distractor-cooking.txt"
+      ],
+      "retrieved_chunks": [
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "distractor-cooking.txt::c0::96fdaf719cba828f"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3692999598570168,
+        "dense": 0.34200004301965237,
+        "query_total": 0.38599997060373425
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-vega-backup",
+      "query": "How often are Vega backups created?",
+      "expected_docs": [
+        "vega-backup.txt"
+      ],
+      "retrieved_docs": [
+        "vega-backup.txt",
+        "distractor-astronomy.txt",
+        "vega-delete.txt",
+        "rigel-backup.txt",
+        "lyra-retention.txt",
+        "rigel-delete.txt",
+        "orion-retention.txt",
+        "nova-auth.txt",
+        "distractor-database.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "nova-timeout.txt::c0::369080401f2d9d11"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3575999871827662,
+        "dense": 0.33119996078312397,
+        "query_total": 0.37379999412223697
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-vega-backup-hard",
+      "query": "Find the policy for vega backup policy and explain its requirements.",
+      "expected_docs": [
+        "vega-backup.txt"
+      ],
+      "retrieved_docs": [
+        "vega-backup.txt",
+        "rigel-backup.txt",
+        "vega-delete.txt",
+        "lyra-retention.txt",
+        "rigel-delete.txt",
+        "orion-retention.txt",
+        "distractor-database.txt",
+        "orion-export.txt",
+        "distractor-cooking.txt",
+        "distractor-astronomy.txt"
+      ],
+      "retrieved_chunks": [
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "distractor-cooking.txt::c0::96fdaf719cba828f",
+        "distractor-astronomy.txt::c0::772de31acf1cec07"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3687999560497701,
+        "dense": 0.34010002855211496,
+        "query_total": 0.3860999713651836
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-vega-delete",
+      "query": "What is the Vega deletion grace period?",
+      "expected_docs": [
+        "vega-delete.txt"
+      ],
+      "retrieved_docs": [
+        "vega-delete.txt",
+        "rigel-delete.txt",
+        "vega-backup.txt",
+        "distractor-astronomy.txt",
+        "distractor-database.txt",
+        "orion-export.txt",
+        "orion-retention.txt",
+        "rigel-backup.txt",
+        "nova-auth.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "vega-delete.txt::c0::5013a689762efc48",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "nova-timeout.txt::c0::369080401f2d9d11"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.36319997161626816,
+        "dense": 0.3353999927639961,
+        "query_total": 0.3795999800786376
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-vega-delete-hard",
+      "query": "Find the policy for vega deletion policy and explain its requirements.",
+      "expected_docs": [
+        "vega-delete.txt"
+      ],
+      "retrieved_docs": [
+        "vega-delete.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "distractor-database.txt",
+        "rigel-backup.txt",
+        "orion-export.txt",
+        "distractor-cooking.txt",
+        "distractor-astronomy.txt"
+      ],
+      "retrieved_chunks": [
+        "vega-delete.txt::c0::5013a689762efc48",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "distractor-cooking.txt::c0::96fdaf719cba828f",
+        "distractor-astronomy.txt::c0::772de31acf1cec07"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.36100001307204366,
+        "dense": 0.33459998667240143,
+        "query_total": 0.3771000192500651
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-rigel-backup",
+      "query": "How often are Rigel backups created?",
+      "expected_docs": [
+        "rigel-backup.txt"
+      ],
+      "retrieved_docs": [
+        "rigel-backup.txt",
+        "rigel-delete.txt",
+        "distractor-astronomy.txt",
+        "vega-backup.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "nova-auth.txt",
+        "distractor-database.txt",
+        "nova-timeout.txt",
+        "vega-delete.txt"
+      ],
+      "retrieved_chunks": [
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "vega-delete.txt::c0::5013a689762efc48"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.35689998185262084,
+        "dense": 0.3307999577373266,
+        "query_total": 0.3735999925993383
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-rigel-backup-hard",
+      "query": "Find the policy for rigel backup policy and explain its requirements.",
+      "expected_docs": [
+        "rigel-backup.txt"
+      ],
+      "retrieved_docs": [
+        "rigel-backup.txt",
+        "rigel-delete.txt",
+        "vega-backup.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "distractor-database.txt",
+        "orion-export.txt",
+        "vega-delete.txt",
+        "distractor-cooking.txt",
+        "distractor-astronomy.txt"
+      ],
+      "retrieved_chunks": [
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "distractor-cooking.txt::c0::96fdaf719cba828f",
+        "distractor-astronomy.txt::c0::772de31acf1cec07"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3648999845609069,
+        "dense": 0.3380000125616789,
+        "query_total": 0.38109999150037766
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-rigel-delete",
+      "query": "Can a Rigel deletion request be cancelled?",
+      "expected_docs": [
+        "rigel-delete.txt"
+      ],
+      "retrieved_docs": [
+        "vega-delete.txt",
+        "rigel-delete.txt",
+        "rigel-backup.txt",
+        "distractor-network.txt",
+        "orion-retention.txt",
+        "distractor-astronomy.txt",
+        "lyra-retention.txt",
+        "atlas-auth.txt",
+        "nova-auth.txt",
+        "atlas-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "vega-delete.txt::c0::5013a689762efc48",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3752000047825277,
+        "dense": 0.34850003430619836,
+        "query_total": 0.39330002618953586
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 0.5,
+        "ndcg_at_5": 0.6309297535714575
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-rigel-delete-hard",
+      "query": "Find the policy for rigel deletion policy and explain its requirements.",
+      "expected_docs": [
+        "rigel-delete.txt"
+      ],
+      "retrieved_docs": [
+        "rigel-delete.txt",
+        "rigel-backup.txt",
+        "vega-delete.txt",
+        "vega-backup.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "distractor-database.txt",
+        "orion-export.txt",
+        "distractor-cooking.txt",
+        "distractor-astronomy.txt"
+      ],
+      "retrieved_chunks": [
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "distractor-cooking.txt::c0::96fdaf719cba828f",
+        "distractor-astronomy.txt::c0::772de31acf1cec07"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3768999595195055,
+        "dense": 0.3496999852359295,
+        "query_total": 0.3931999672204256
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.2,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-compare-orion-retention",
+      "query": "Compare Orion and Lyra audit log retention.",
+      "expected_docs": [
+        "orion-retention.txt",
+        "lyra-retention.txt"
+      ],
+      "retrieved_docs": [
+        "orion-export.txt",
+        "lyra-retention.txt",
+        "orion-retention.txt",
+        "lyra-export.txt",
+        "distractor-astronomy.txt",
+        "distractor-database.txt",
+        "rigel-backup.txt",
+        "distractor-network.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt"
+      ],
+      "retrieved_chunks": [
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "lyra-retention.txt::c0::0a47085de4dc39e5",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "lyra-export.txt::c0::89ecbcd01b1ae6b4",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3459000145085156,
+        "dense": 0.3197999903932214,
+        "query_total": 0.36509998608380556
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "mrr": 0.5,
+        "ndcg_at_5": 0.6934264036172708
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-compare-atlas-timeout",
+      "query": "Compare Atlas and Nova request timeout handling.",
+      "expected_docs": [
+        "atlas-timeout.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_docs": [
+        "nova-timeout.txt",
+        "atlas-timeout.txt",
+        "atlas-auth.txt",
+        "distractor-network.txt",
+        "orion-export.txt",
+        "nova-auth.txt",
+        "rigel-delete.txt",
+        "distractor-database.txt",
+        "orion-retention.txt",
+        "vega-delete.txt"
+      ],
+      "retrieved_chunks": [
+        "nova-timeout.txt::c0::369080401f2d9d11",
+        "atlas-timeout.txt::c0::3ec1ff9c3abd3e7e",
+        "atlas-auth.txt::c0::ec8ce158337c524a",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "orion-retention.txt::c0::ea3e98fa4c149524",
+        "vega-delete.txt::c0::5013a689762efc48"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.34710002364590764,
+        "dense": 0.32140000257641077,
+        "query_total": 0.3646999830380082
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-compare-vega-backup",
+      "query": "Compare Vega and Rigel backup frequency.",
+      "expected_docs": [
+        "vega-backup.txt",
+        "rigel-backup.txt"
+      ],
+      "retrieved_docs": [
+        "rigel-backup.txt",
+        "vega-backup.txt",
+        "rigel-delete.txt",
+        "distractor-astronomy.txt",
+        "orion-export.txt",
+        "vega-delete.txt",
+        "distractor-network.txt",
+        "distractor-database.txt",
+        "nova-auth.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "nova-timeout.txt::c0::369080401f2d9d11"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.36290002753958106,
+        "dense": 0.33379998058080673,
+        "query_total": 0.38109999150037766
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    },
+    {
+      "query_id": "synthetic-compare-vega-delete",
+      "query": "Compare Vega and Rigel deletion grace period policies.",
+      "expected_docs": [
+        "vega-delete.txt",
+        "rigel-delete.txt"
+      ],
+      "retrieved_docs": [
+        "rigel-delete.txt",
+        "vega-delete.txt",
+        "distractor-astronomy.txt",
+        "rigel-backup.txt",
+        "vega-backup.txt",
+        "orion-export.txt",
+        "distractor-database.txt",
+        "distractor-network.txt",
+        "nova-auth.txt",
+        "nova-timeout.txt"
+      ],
+      "retrieved_chunks": [
+        "rigel-delete.txt::c0::29566e38572905e6",
+        "vega-delete.txt::c0::5013a689762efc48",
+        "distractor-astronomy.txt::c0::772de31acf1cec07",
+        "rigel-backup.txt::c0::a00a2822d9b5c8f3",
+        "vega-backup.txt::c0::b50c50ee49e6116e",
+        "orion-export.txt::c0::cf60e1a40085aa80",
+        "distractor-database.txt::c0::e1abdc8a3bc053ca",
+        "distractor-network.txt::c0::ea03b844a6a1596b",
+        "nova-auth.txt::c0::7663d4df0437c75f",
+        "nova-timeout.txt::c0::369080401f2d9d11"
+      ],
+      "status": "completed",
+      "latency_ms": {
+        "retrieve": 0.3793000360019505,
+        "dense": 0.35340001340955496,
+        "query_total": 0.3983000060543418
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "precision_at_5": 0.4,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0
+      },
+      "missed_docs": []
+    }
+  ],
+  "latency_ms": {
+    "setup": 44.11060002166778,
+    "retrieve": {
+      "p50_ms": 0.3714999766089022,
+      "p95_ms": 0.45256497396621853,
+      "samples": 28
+    },
+    "rerank": {
+      "p50_ms": null,
+      "p95_ms": null,
+      "samples": 0
+    },
+    "generate": {
+      "p50_ms": null,
+      "p95_ms": null,
+      "samples": 0
+    },
+    "judge": {
+      "p50_ms": null,
+      "p95_ms": null,
+      "samples": 0
+    },
+    "query_total": {
+      "p50_ms": 0.3883499593939632,
+      "p95_ms": 0.47611501649953425,
+      "samples": 28
+    },
+    "dense": {
+      "p50_ms": 0.34380002762191,
+      "p95_ms": 0.40787998295854777,
+      "samples": 28
+    }
+  }
+}

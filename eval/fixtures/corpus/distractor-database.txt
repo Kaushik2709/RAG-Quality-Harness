@@ -1,0 +1,1 @@
+Database backups and log exports depend on the database engine. This general guide defines no product policies.

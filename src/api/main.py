@@ -128,6 +128,7 @@ async def ingest_file(
         for d in docs:
             d.metadata["source"] = filename
             d.metadata["file_name"] = filename
+            d.metadata["doc_id"] = filename
 
         chunks = chunk_documents(
             docs,
@@ -225,14 +226,16 @@ def get_eval_reports():
                 m = data.get("metrics", {})
                 reports.append({
                     "run": "Baseline Snapshot",
+                    "status": data.get("status", "legacy-unverified"),
+                    "judge_status": data.get("judge_status", "unknown"),
                     "timestamp": data.get("timestamp", ""),
-                    "recall_at_5": m.get("recall_at_5", m.get("recall", 0.0)),
-                    "precision_at_5": m.get("precision_at_5", m.get("precision", 0.0)),
-                    "mrr": m.get("mrr", 0.0),
-                    "ndcg_at_5": m.get("ndcg_at_5", 0.0),
-                    "faithfulness": m.get("mean_faithfulness", m.get("faithfulness", 0.0)),
-                    "relevancy": m.get("mean_relevancy", m.get("relevancy", 0.0)),
-                    "context_precision": m.get("mean_context_precision", 0.0)
+                    "recall_at_5": m.get("recall_at_5", m.get("recall")),
+                    "precision_at_5": m.get("precision_at_5", m.get("precision")),
+                    "mrr": m.get("mrr"),
+                    "ndcg_at_5": m.get("ndcg_at_5"),
+                    "faithfulness": m.get("mean_faithfulness", m.get("faithfulness")),
+                    "relevancy": m.get("mean_relevancy", m.get("relevancy")),
+                    "context_precision": m.get("mean_context_precision")
                 })
         except Exception as e:
             print(f"[Evals API] Error reading baseline_metrics.json: {e}")
@@ -249,31 +252,20 @@ def get_eval_reports():
                 label = f"Run {idx} ({filename.replace('eval_', '').replace('.json', '')})"
                 reports.append({
                     "run": label,
+                    "status": data.get("status", "legacy-unverified"),
+                    "judge_status": data.get("judge_status", "unknown"),
+                    "config": data.get("config", {}),
                     "timestamp": timestamp,
-                    "recall_at_5": m.get("recall_at_5", m.get("recall", 0.0)),
-                    "precision_at_5": m.get("precision_at_5", m.get("precision", 0.0)),
-                    "mrr": m.get("mrr", 0.0),
-                    "ndcg_at_5": m.get("ndcg_at_5", 0.0),
-                    "faithfulness": m.get("mean_faithfulness", m.get("faithfulness", 0.0)),
-                    "relevancy": m.get("mean_relevancy", m.get("relevancy", 0.0)),
-                    "context_precision": m.get("mean_context_precision", 0.0)
+                    "recall_at_5": m.get("recall_at_5", m.get("recall")),
+                    "precision_at_5": m.get("precision_at_5", m.get("precision")),
+                    "mrr": m.get("mrr"),
+                    "ndcg_at_5": m.get("ndcg_at_5"),
+                    "faithfulness": m.get("mean_faithfulness", m.get("faithfulness")),
+                    "relevancy": m.get("mean_relevancy", m.get("relevancy")),
+                    "context_precision": m.get("mean_context_precision")
                 })
         except Exception as e:
             print(f"[Evals API] Error reading report {filepath}: {e}")
-
-    # 3. If no reports on disk yet, provide default baseline snapshot
-    if not reports:
-        reports.append({
-            "run": "Initial Baseline",
-            "timestamp": "Initial Setup",
-            "recall_at_5": 0.85,
-            "precision_at_5": 0.80,
-            "mrr": 0.88,
-            "ndcg_at_5": 0.86,
-            "faithfulness": 0.90,
-            "relevancy": 0.87,
-            "context_precision": 0.85
-        })
 
     return reports
 
@@ -289,7 +281,7 @@ def _execute_eval_task(accept_baseline: bool):
 
         results = run_evaluation(dataset_path=dataset_path)
 
-        if accept_baseline or not os.path.exists(baseline_path):
+        if accept_baseline and results.get("status") == "completed":
             import json
             with open(baseline_path, "w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2)

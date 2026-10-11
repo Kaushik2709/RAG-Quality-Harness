@@ -21,6 +21,7 @@ class JudgeResult(BaseModel):
 class LLMJudge:
     def __init__(self, chat_model: Optional[BaseChatModel] = None):
         self.chat_model = chat_model or get_chat_model()
+        self.last_usage_metadata = None
         self.prompt_template = build_chat_prompt_template(
             system_template=JUDGE_SYSTEM_PROMPT,
             human_template=JUDGE_USER_PROMPT_TEMPLATE
@@ -49,6 +50,7 @@ class LLMJudge:
                         continue
                 raise e
 
+        self.last_usage_metadata = getattr(ai_message, "usage_metadata", None)
         text = str(ai_message.content).strip() if ai_message else ""
 
         # Clean JSON codeblock wrappers if present

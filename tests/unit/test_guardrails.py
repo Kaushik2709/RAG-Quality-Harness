@@ -102,7 +102,10 @@ def test_langgraph_pipeline_blocks_prompt_injection():
     assert final_state.get("guardrail_status") is not None
     assert final_state.get("guardrail_status")["action"] == "blocked"
 
-def test_langgraph_pipeline_allows_safe_query():
+def test_langgraph_pipeline_allows_safe_query(monkeypatch):
+    monkeypatch.setattr("src.pipeline.graph.retrieve_node", lambda state, **kwargs: {"documents": []})
+    monkeypatch.setattr("src.pipeline.graph.rerank_node", lambda state: {"reranked_documents": []})
+    monkeypatch.setattr("src.pipeline.graph.generate_node", lambda state: {"generation": "No context available."})
     graph = compile_rag_graph()
     state = {
         "query": "What is recall at K in document retrieval?",

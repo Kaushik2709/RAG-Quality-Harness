@@ -3,7 +3,7 @@ from langchain_core.documents import Document
 from langgraph.graph import StateGraph, END
 
 from src.retrieval.vector_store import get_vector_store
-from src.retrieval.retriever import build_retriever
+from src.retrieval.retriever import build_retriever, FixedRetriever
 from src.retrieval.reranker import build_reranked_retriever
 from src.generation.prompt_builder import build_chat_prompt_template
 from src.generation.generator import get_chat_model
@@ -51,7 +51,7 @@ def input_guardrail_node(state: RAGState) -> Dict[str, Any]:
 
         return updates
 
-def retrieve_node(state: RAGState) -> Dict[str, Any]:
+def retrieve_node(state: RAGState, vector_store=None, corpus_documents=None) -> Dict[str, Any]:
     if state.get("guardrail_blocked"):
         return {}
 
@@ -63,10 +63,10 @@ def retrieve_node(state: RAGState) -> Dict[str, Any]:
     use_hybrid = req_hybrid if req_hybrid is not None else settings.USE_HYBRID_SEARCH
 
     with trace_stage("retrieve", query_id=query_id, model_name=settings.EMBEDDING_MODEL) as span:
-        vstore = get_vector_store()
+        vstore = vector_store if vector_store is not None else get_vector_store()
         retriever = build_retriever(
             vectorstore=vstore,
-            documents=state.get("documents", []),
+            documents=corpus_documents,
             top_k=top_k,
             use_hybrid=use_hybrid
         )
@@ -93,7 +93,7 @@ def rerank_node(state: RAGState) -> Dict[str, Any]:
         if not input_docs:
             reranked_docs = []
         else:
-            base_retriever = build_retriever(documents=input_docs, top_k=top_k, use_hybrid=use_hybrid)
+            base_retriever = FixedRetriever(documents=input_docs)
             reranked_retriever = build_reranked_retriever(base_retriever, top_n=top_k_rerank)
             reranked_docs = reranked_retriever.invoke(query)
         span.set_tokens(tokens_in=sum(len(d.page_content.split()) for d in reranked_docs), tokens_out=len(reranked_docs))
@@ -162,14 +162,15 @@ def route_input_guardrail(state: RAGState) -> str:
         return END
     return "retrieve"
 
-def compile_rag_graph():
+def compile_rag_graph(vector_store=None, corpus_documents=None):
     """
     Compiles and returns the LangGraph StateGraph pipeline with input/output guardrails.
     """
     builder = StateGraph(RAGState)
 
     builder.add_node("input_guardrail", input_guardrail_node)
-    builder.add_node("retrieve", retrieve_node)
+    from functools import partial
+    builder.add_node("retrieve", partial(retrieve_node, vector_store=vector_store, corpus_documents=corpus_documents))
     builder.add_node("rerank", rerank_node)
     builder.add_node("generate", generate_node)
     builder.add_node("output_guardrail", output_guardrail_node)

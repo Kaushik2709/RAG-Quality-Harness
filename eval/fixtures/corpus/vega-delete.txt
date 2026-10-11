@@ -1,0 +1,3 @@
+Vega deletion policy
+
+Vega deletion requests enter a 7 day grace period. Operators can cancel deletion during this period.

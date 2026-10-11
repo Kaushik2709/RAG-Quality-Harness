@@ -1,0 +1,3 @@
+Lyra retention policy
+
+Lyra audit logs are retained for 90 days. Expiration removes archived events.

@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from src.ingestion.embedder import get_embeddings_model
 from src.config import settings
 
-def get_vector_store(
+def _create_vector_store(
     embeddings=None,
     use_in_memory: bool = False,
     collection_name: Optional[str] = None
@@ -66,7 +66,7 @@ def get_vector_store(
                     collection_name=col_name,
                     vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
                     quantization_config=ScalarQuantization(
-                        scalar_quantile=ScalarQuantizationConfig(
+                        scalar=ScalarQuantizationConfig(
                             type=ScalarType.INT8,
                             always_ram=True
                         )
@@ -97,3 +97,35 @@ def get_vector_store(
     except Exception as e:
         print(f"[VectorStore Warning] Qdrant connection error ({e}). Falling back to LangChain InMemoryVectorStore.")
         return InMemoryVectorStore(embedding=emb)
+
+
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _default_vector_store():
+    # One process-local fallback is shared by API ingestion and queries.
+    return _create_vector_store()
+
+
+def get_vector_store(embeddings=None, use_in_memory=False, collection_name=None):
+    if embeddings is None and not use_in_memory and collection_name is None:
+        return _default_vector_store()
+    return _create_vector_store(embeddings, use_in_memory, collection_name)
+
+
+def get_indexed_documents(store):
+    """Read the COMPLETE collection for BM25; never use prior query candidates."""
+    if isinstance(store, InMemoryVectorStore):
+        return [Document(page_content=row["text"], metadata=row["metadata"]) for row in store.store.values()]
+    documents, offset = [], None
+    while True:
+        points, offset = store.client.scroll(collection_name=store.collection_name,
+                                             limit=256, offset=offset, with_payload=True,
+                                             with_vectors=False)
+        for point in points:
+            payload = point.payload or {}
+            documents.append(Document(page_content=payload.get("page_content", ""),
+                                      metadata=payload.get("metadata", {})))
+        if offset is None:
+            return documents
