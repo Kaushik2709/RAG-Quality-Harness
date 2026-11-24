@@ -27,6 +27,11 @@ _EXTRA_COLUMNS = {
     "error_category": "TEXT",
     "status": "TEXT DEFAULT 'ok'",
     "cost_source": "TEXT DEFAULT 'estimated_static_pricing'",
+    "tenant_id": "TEXT DEFAULT 'default'",
+    "subject_id": "TEXT",
+    "request_id": "TEXT",
+    "credential_id": "TEXT",
+    "auth_method": "TEXT",
 }
 
 
@@ -46,6 +51,11 @@ class TraceRecord(BaseModel):
     error_category: Optional[str] = None
     status: str = "ok"
     cost_source: str = "estimated_static_pricing"
+    tenant_id: str = "default"
+    subject_id: Optional[str] = None
+    request_id: Optional[str] = None
+    credential_id: Optional[str] = None
+    auth_method: Optional[str] = None
 
 
 class TraceExporter:
@@ -92,6 +102,12 @@ class TraceExporter:
         except queue.Full:
             with self._lock:
                 self.dropped += 1
+            try:
+                from src.observability.metrics import metrics
+                metrics.inc("rag_trace_queue_dropped_total", value=1.0)
+                metrics.inc("rag_traces_dropped_total", {"reason": "queue_full"}, value=1.0)
+            except Exception:
+                pass
             return False
 
     def flush(self, timeout: float = 5.0) -> bool:
@@ -101,11 +117,26 @@ class TraceExporter:
             return True
         return self._queue.empty()
 
-    def close(self) -> None:
+    def close(self, timeout: float = 5.0) -> None:
+        """Flushes buffered traces, stops the background worker, and cleans up connections."""
+        self.flush(timeout=timeout)
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=5.0)
-        self._drain_remaining()
+            self._thread.join(timeout=timeout)
+
+        remaining_count = self._queue.qsize()
+        if remaining_count > 0:
+            try:
+                self._drain_remaining()
+            except Exception as exc:
+                lost = self._queue.qsize()
+                if lost > 0:
+                    try:
+                        from src.observability.metrics import metrics
+                        metrics.inc("rag_traces_lost_on_shutdown_total", value=float(lost))
+                        metrics.inc("rag_traces_dropped_total", {"reason": "shutdown_timeout"}, value=float(lost))
+                    except Exception:
+                        pass
         if self._pg_connection is not None:
             try:
                 self._pg_connection.close()
@@ -114,25 +145,42 @@ class TraceExporter:
             self._pg_connection = None
 
     def status(self) -> Dict[str, Any]:
+        depth = self._queue.qsize()
+        drops = self.dropped
+        health = "healthy"
+        warning = None
+        if drops > 0:
+            health = "degraded"
+            warning = f"Exporter dropped {drops} traces due to queue overflow."
+        elif depth > (self.queue_size * 0.8):
+            health = "warning"
+            warning = f"Exporter queue is nearing capacity ({depth}/{self.queue_size})."
         return {
             "sink": self.sink,
-            "queue_depth": self._queue.qsize(),
+            "status": health,
+            "warning": warning,
+            "queue_depth": depth,
             "queue_capacity": self.queue_size,
             "written": self.written,
-            "dropped": self.dropped,
+            "dropped": drops,
             "failed": self.failed,
             "worker_alive": bool(self._thread and self._thread.is_alive()),
             "last_error": self.last_error,
             "persistent": self.sink in {"sqlite", "postgres"},
         }
 
-    def get_recent_traces(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_recent_traces(self, limit: int = 50, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
         self.flush(timeout=2.0)
         try:
             if self.sink == "postgres":
-                return self._read_postgres(limit)
-            if self.sink == "sqlite":
-                return self._read_sqlite(limit)
+                results = self._read_postgres(limit)
+            elif self.sink == "sqlite":
+                results = self._read_sqlite(limit)
+            else:
+                results = []
+            if tenant_id:
+                results = [r for r in results if r.get("tenant_id") == tenant_id]
+            return results
         except Exception as exc:  # noqa: BLE001
             self.last_error = f"{type(exc).__name__}: {exc}"
         return []
@@ -211,11 +259,21 @@ class TraceExporter:
                 return
             with self._lock:
                 self.written += len(batch)
+            try:
+                from src.observability.metrics import metrics
+                metrics.inc("rag_traces_exported_total", {"status": "success"}, value=float(len(batch)))
+            except Exception:
+                pass
             self._update_metrics()
         except Exception as exc:  # noqa: BLE001 - counted and surfaced, never retried forever
             with self._lock:
                 self.failed += len(batch)
                 self.last_error = f"{type(exc).__name__}: {exc}"
+            try:
+                from src.observability.metrics import metrics
+                metrics.inc("rag_traces_exported_total", {"status": "failure"}, value=float(len(batch)))
+            except Exception:
+                pass
             self._update_metrics()
 
     def _update_metrics(self) -> None:
@@ -295,14 +353,16 @@ class TraceExporter:
                 """
                 INSERT INTO traces (
                     query_id, stage, latency_ms, tokens_in, tokens_out, cost_usd, model_name, timestamp,
-                    usage_source, index_version, candidate_count, rerank_status, error_category, status, cost_source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    usage_source, index_version, candidate_count, rerank_status, error_category, status, cost_source,
+                    tenant_id, subject_id, request_id, credential_id, auth_method
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         r.query_id, r.stage, r.latency_ms, r.tokens_in, r.tokens_out, r.cost_usd,
                         r.model_name, r.timestamp, r.usage_source, r.index_version, r.candidate_count,
                         r.rerank_status, r.error_category, r.status, r.cost_source,
+                        r.tenant_id, r.subject_id, r.request_id, r.credential_id, r.auth_method,
                     )
                     for r in batch
                 ],
@@ -317,7 +377,8 @@ class TraceExporter:
             rows = connection.execute(
                 """
                 SELECT query_id, stage, latency_ms, tokens_in, tokens_out, cost_usd, model_name, timestamp,
-                       usage_source, index_version, candidate_count, rerank_status, error_category, status, cost_source
+                       usage_source, index_version, candidate_count, rerank_status, error_category, status, cost_source,
+                       tenant_id, subject_id, request_id
                 FROM traces ORDER BY id DESC LIMIT ?
                 """,
                 (limit,),
@@ -327,7 +388,7 @@ class TraceExporter:
         keys = [
             "query_id", "stage", "latency_ms", "tokens_in", "tokens_out", "cost_usd", "model_name",
             "timestamp", "usage_source", "index_version", "candidate_count", "rerank_status",
-            "error_category", "status", "cost_source",
+            "error_category", "status", "cost_source", "tenant_id", "subject_id", "request_id",
         ]
         return [dict(zip(keys, row)) for row in rows]
 
@@ -363,14 +424,16 @@ class TraceExporter:
         cursor.executemany(
             """
             INSERT INTO traces (query_id, stage, latency_ms, tokens_in, tokens_out, cost_usd, model_name, timestamp,
-                usage_source, index_version, candidate_count, rerank_status, error_category, status, cost_source)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                usage_source, index_version, candidate_count, rerank_status, error_category, status, cost_source,
+                tenant_id, subject_id, request_id, credential_id, auth_method)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             [
                 (
                     r.query_id, r.stage, r.latency_ms, r.tokens_in, r.tokens_out, r.cost_usd,
                     r.model_name, r.timestamp, r.usage_source, r.index_version, r.candidate_count,
                     r.rerank_status, r.error_category, r.status, r.cost_source,
+                    r.tenant_id, r.subject_id, r.request_id, r.credential_id, r.auth_method,
                 )
                 for r in batch
             ],

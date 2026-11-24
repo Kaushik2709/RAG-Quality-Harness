@@ -71,6 +71,7 @@ def input_guardrail_node(state: RAGState) -> Dict[str, Any]:
         span.set_attribute("guardrail.rules", result.triggered_rules)
         if result.action == GuardrailAction.BLOCKED:
             metrics.inc("rag_guardrail_total", {"stage": "input", "action": "blocked"})
+            metrics.inc("rag_prompt_injection_detected_total", {"tenant_id": _tenant(state), "source": "query"})
             return {
                 "guardrail_blocked": True,
                 "guardrail_status": result.to_dict(),
@@ -279,22 +280,48 @@ def citation_validation_node(state: RAGState) -> Dict[str, Any]:
     answer = StructuredAnswer(**payload)
     documents = state.get("reranked_documents", [])
     query_id = _query_id(state)
+    policy = getattr(settings, "CITATION_VALIDATION_POLICY", "strict")
+
     with trace_stage("citation_validation", query_id=query_id) as span:
-        validation = validate_citations(answer, documents, tenant_id=_tenant(state))
+        validation = validate_citations(answer, documents, tenant_id=_tenant(state), policy=policy)
         span.set_attribute("citations.status", validation.status)
         span.set_attribute("citations.precision", validation.citation_precision)
-        span.set_attribute("citations.recall", validation.citation_recall)
+        span.set_attribute("citations.recall", validation.retrieved_evidence_utilization)
+        span.set_attribute("citations.claim_coverage", validation.claim_coverage)
         span.set_attribute("citations.rejected", len(validation.rejected))
+        span.set_attribute("citations.is_fully_supported", validation.is_fully_supported)
         metrics.inc("rag_citation_validation_total", {"status": validation.status})
-        if not answer.abstained and not validation.accepted:
-            # An answer without verifiable evidence is not returned as a confident answer.
-            fallback = abstained_answer("citations_failed_validation")
-            return {
-                "generation": fallback.answer,
-                "generation_status": "abstained",
-                "structured_answer": fallback.model_dump(),
-                "citation_validation": {**validation.to_dict(), "original_answer_rejected": True},
-            }
+        outcome = "abstained" if answer.abstained else (validation.status.value if hasattr(validation.status, "value") else str(validation.status).lower())
+        metrics.inc("rag_citation_validation_outcomes_total", {"tenant_id": _tenant(state), "outcome": outcome})
+
+        if not answer.abstained:
+            if policy == "strict" and not validation.is_fully_supported:
+                # In strict mode: reject complete answer if any required evidence or claim fails
+                metrics.inc("rag_citation_rejections_total", {"reason": "strict_policy_rejection"})
+                fallback = abstained_answer("citations_failed_validation")
+                return {
+                    "generation": fallback.answer,
+                    "generation_status": "abstained",
+                    "structured_answer": fallback.model_dump(),
+                    "citation_validation": {**validation.to_dict(), "original_answer_rejected": True},
+                }
+            if policy == "review" and not validation.is_fully_supported:
+                return {
+                    "generation_status": "review_required",
+                    "citation_validation": {
+                        **validation.to_dict(),
+                        "original_answer_rejected": False,
+                        "review_required": True,
+                    },
+                }
+            if not validation.accepted:
+                fallback = abstained_answer("citations_failed_validation")
+                return {
+                    "generation": fallback.answer,
+                    "generation_status": "abstained",
+                    "structured_answer": fallback.model_dump(),
+                    "citation_validation": {**validation.to_dict(), "original_answer_rejected": True},
+                }
     return {"citation_validation": validation.to_dict()}
 
 

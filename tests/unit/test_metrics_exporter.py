@@ -105,3 +105,45 @@ def test_trace_stage_marks_errors_without_swallowing(tmp_path):
         assert row["error_category"] == "RuntimeError"
     finally:
         exporter.close()
+
+
+def test_tenant_metrics_and_seconds_histogram():
+    registry = MetricsRegistry()
+    registry.inc("rag_requests_total", {"tenant_id": "tenant-alpha", "endpoint": "/query", "status_code": "200"})
+    registry.set_gauge("rag_active_document_versions", 3, {"tenant_id": "tenant-alpha"})
+    registry.inc("rag_citation_validation_outcomes_total", {"tenant_id": "tenant-alpha", "outcome": "validated"})
+    registry.inc("rag_prompt_injection_detected_total", {"tenant_id": "tenant-alpha", "source": "query"})
+    registry.observe("rag_retrieval_latency_seconds", 0.045, {"tenant_id": "tenant-alpha", "mode": "hybrid"})
+
+    rendered = registry.render()
+    assert 'rag_requests_total{endpoint="/query",status_code="200",tenant_id="tenant-alpha"} 1' in rendered
+    assert 'rag_active_document_versions{tenant_id="tenant-alpha"} 3' in rendered
+    assert 'rag_citation_validation_outcomes_total{outcome="validated",tenant_id="tenant-alpha"} 1' in rendered
+    assert 'rag_prompt_injection_detected_total{source="query",tenant_id="tenant-alpha"} 1' in rendered
+    assert 'rag_retrieval_latency_seconds_bucket{mode="hybrid",tenant_id="tenant-alpha",le="0.05"} 1' in rendered
+    assert 'rag_retrieval_latency_seconds_count{mode="hybrid",tenant_id="tenant-alpha"} 1' in rendered
+
+
+def test_exporter_health_warnings_and_trace_tenant_filtering(tmp_path):
+    exporter = TraceExporter(sink="sqlite", db_path=str(tmp_path / "traces_health.db"), queue_size=10, flush_interval=0.01)
+    try:
+        status = exporter.status()
+        assert status["status"] == "healthy"
+        assert status["warning"] is None
+
+        # Export for tenant-a and tenant-b
+        rec_a = TraceRecord(query_id="q-a", stage="retrieve", latency_ms=1.0, tenant_id="tenant-a")
+        rec_b = TraceRecord(query_id="q-b", stage="retrieve", latency_ms=2.0, tenant_id="tenant-b")
+        exporter.export(rec_a)
+        exporter.export(rec_b)
+        assert exporter.flush(timeout=3)
+
+        traces_a = exporter.get_recent_traces(limit=10, tenant_id="tenant-a")
+        traces_b = exporter.get_recent_traces(limit=10, tenant_id="tenant-b")
+        assert len(traces_a) == 1
+        assert traces_a[0]["query_id"] == "q-a"
+        assert len(traces_b) == 1
+        assert traces_b[0]["query_id"] == "q-b"
+    finally:
+        exporter.close()
+

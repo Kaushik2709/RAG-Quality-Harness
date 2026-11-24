@@ -5,6 +5,8 @@ from langchain_core.documents import Document
 from src.evaluation.experiments import (
     EXPERIMENT_SUITE,
     AdaptiveRetriever,
+    AdaptiveRetrievalRouter,
+    CalibratedOfflineCrossEncoder,
     ContextCompressor,
     ExperimentConfig,
     ExperimentRunner,
@@ -12,6 +14,7 @@ from src.evaluation.experiments import (
     ParentDocumentRetriever,
     QueryRewriter,
     linear_score_fusion,
+    run_query_rewriting_study,
 )
 from src.evaluation.golden_dataset import GoldenTriple
 
@@ -162,3 +165,98 @@ def test_experiment_runner_basic(monkeypatch):
     assert result["aggregate_metrics"]["recall_at_5"] == 1.0
     assert len(result["per_query_results"]) == 1
     assert result["per_query_results"][0]["ranking_after_fusion"] == ["c1"]
+
+
+def test_reranker_comparative_metrics_e5():
+    """Verify E5 computes before-and-after reranking metrics and throughput."""
+    class FakeVectorStore:
+        def similarity_search(self, q, k):
+            return [
+                Document(page_content="irrelevant distractor text", metadata={"chunk_id": "c2", "doc_id": "d2"}),
+                Document(page_content="audit retention period is 30 days exactly", metadata={"chunk_id": "c1", "doc_id": "d1"}),
+            ]
+
+    chunks = [
+        Document(page_content="irrelevant distractor text", metadata={"chunk_id": "c2", "doc_id": "d2"}),
+        Document(page_content="audit retention period is 30 days exactly", metadata={"chunk_id": "c1", "doc_id": "d1"}),
+    ]
+    reranker = CalibratedOfflineCrossEncoder()
+    runner = ExperimentRunner(
+        vector_store=FakeVectorStore(),
+        chunks=chunks,
+        corpus_hash="fake-hash",
+        dataset_hash="fake-hash",
+        reranker=reranker,
+    )
+
+    triple = GoldenTriple(
+        query_id="q1",
+        query="audit retention 30 days",
+        reference_answer="30 days",
+        expected_relevant_doc_ids=["d1"],
+        answerable=True,
+    )
+
+    res = runner.run_experiment(EXPERIMENT_SUITE["E5"], [triple])
+    m = res["aggregate_metrics"]
+    assert "mrr_before_rerank" in m
+    assert "mrr_after_rerank" in m
+    # Cross-encoder promoted relevant chunk c1 over c2
+    assert m["mrr_after_rerank"] >= m["mrr_before_rerank"]
+    assert m["throughput_qps"] > 0.0
+
+
+def test_adaptive_retrieval_router():
+    """Verify adaptive routing classifies queries correctly and avoids false abstentions."""
+    triples = [
+        GoldenTriple(query_id="q1", query="What is the audit log retention policy?", expected_relevant_doc_ids=["d1"], reference_answer="30d"),
+        GoldenTriple(query_id="q2", query="audit TTL", expected_relevant_doc_ids=["d1"], reference_answer="30d"),
+        GoldenTriple(query_id="q3", query="Compare data retention policies between Orion and Lyra services.", expected_relevant_doc_ids=["d1", "d2"], reference_answer="comparison"),
+        GoldenTriple(query_id="q4", query="What is the timeout threshold?", expected_relevant_doc_ids=[], reference_answer=None, answerable=False),
+    ]
+
+    r1 = AdaptiveRetrievalRouter.classify_query(triples[0].query)
+    assert r1["route"] == "direct_factual"
+
+    r2 = AdaptiveRetrievalRouter.classify_query(triples[1].query)
+    assert r2["route"] == "keyword"
+
+    r3 = AdaptiveRetrievalRouter.classify_query(triples[2].query)
+    assert r3["route"] == "complex"
+
+    r4 = AdaptiveRetrievalRouter.classify_query(triples[3].query)
+    assert r4["route"] == "abstain_early"
+
+    evaluation = AdaptiveRetrievalRouter.evaluate_routing(triples)
+    assert evaluation["false_abstention_rate"] == 0.0
+    assert evaluation["compute_cost_savings_pct"] > 0.0
+
+
+def test_query_rewriting_study():
+    """Verify query rewriting study computes improvements, regressions, and category breakdown."""
+    class FakeVectorStore:
+        def similarity_search(self, q, k):
+            if "authentication" in q:
+                return [Document(page_content="auth docs", metadata={"chunk_id": "c1", "doc_id": "d1"})]
+            return [Document(page_content="generic", metadata={"chunk_id": "c2", "doc_id": "d2"})]
+
+    chunks = [
+        Document(page_content="auth docs", metadata={"chunk_id": "c1", "doc_id": "d1"}),
+        Document(page_content="generic", metadata={"chunk_id": "c2", "doc_id": "d2"}),
+    ]
+    runner = ExperimentRunner(
+        vector_store=FakeVectorStore(),
+        chunks=chunks,
+        corpus_hash="fake-hash",
+        dataset_hash="fake-hash",
+    )
+
+    triples = [
+        GoldenTriple(query_id="q1", query="atlas auth", expected_relevant_doc_ids=["d1"], reference_answer="ans", category="keyword"),
+    ]
+
+    study = run_query_rewriting_study(runner, triples)
+    assert "categories" in study
+    assert "total_queries_evaluated" in study
+    assert study["total_queries_evaluated"] == 1
+

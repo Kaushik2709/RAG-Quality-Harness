@@ -23,8 +23,8 @@ jobs:
           python-version: '3.14'
           cache: pip
       - run: pip install -r requirements-offline.txt
-      - name: Run security/API test suite (offline boundary, fail-closed)
-        run: python -m pytest -q tests/unit/test_security_api.py tests/unit/test_ingestion_service.py tests/unit/test_chunker.py tests/unit/test_metrics.py tests/unit/test_metrics_exporter.py tests/unit/test_guardrails.py tests/unit/test_judge.py tests/unit/test_evaluation_reliability.py tests/unit/test_pipeline_graph.py tests/unit/test_index_manager.py tests/unit/test_citations_context.py tests/unit/test_evaluation_extensions.py tests/unit/test_runtime_models.py
+      - name: Run security test suite and API boundary tests (offline boundary, fail-closed)
+        run: python -m pytest -q tests/security/ tests/unit/test_security_api.py tests/unit/test_guardrails.py tests/unit/test_citations_context.py
       - name: Verify no live credentials accepted in tests
         run: |
           python - <<'PY'

@@ -16,3 +16,8 @@ This directory contains Architecture Decision Records documenting significant ar
 | [0008](0008-citation-validation.md) | Citation Validation and Grounded Generation | Accepted | 2026-11-24 |
 | [0009](0009-retrieval-generation-eval-separation.md) | Retrieval and Generation Evaluation Separated | Accepted | 2026-11-24 |
 | [0010](0010-failure-degraded-modes.md) | Failure and Degraded Modes | Accepted | 2026-11-24 |
+| [0011](0011-tenant-scoped-credentials-and-rbac.md) | Tenant-Scoped Cryptographic Credentials and RBAC | Accepted | 2026-11-24 |
+| [0012](0012-tenant-isolated-sparse-retrieval.md) | Tenant-Isolated Sparse Retrieval and Lazy BM25 Initialization | Accepted | 2026-11-24 |
+| [0013](0013-strict-claim-level-grounding-validation.md) | Strict Claim-Level Grounding and Citation Validation | Accepted | 2026-11-24 |
+| [0014](0014-transactional-document-lifecycle-and-crash-recovery.md) | Transactional Document Lifecycle and Crash Recovery | Accepted | 2026-11-24 |
+| [0015](0015-retrieved-evidence-injection-defense-and-untrusted-tagging.md) | Retrieved-Evidence Injection Defense and Untrusted Tagging | Accepted | 2026-11-24 |

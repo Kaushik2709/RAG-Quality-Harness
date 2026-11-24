@@ -65,35 +65,46 @@ class RetrievalRuntime:
     # ------------------------------------------------------------------
     # Index lifecycle
     # ------------------------------------------------------------------
-    def refresh_from_store(self, store, documents: Optional[Sequence[Document]] = None) -> IndexSnapshot:
-        """Explicit refresh. This is the only path that may scroll the corpus."""
+    def refresh_from_store(
+        self, store, documents: Optional[Sequence[Document]] = None, tenant_id: str = "default"
+    ) -> IndexSnapshot:
+        """Explicit refresh for tenant_id. This is the only path that may scroll the corpus."""
         if documents is None:
             documents = get_retrieval_documents(store)
-        return self.index_manager.rebuild(documents, store=store)
+        return self.index_manager.rebuild(documents, store=store, tenant_id=tenant_id)
 
-    def ensure_index(self, store, documents: Optional[Sequence[Document]] = None) -> IndexSnapshot:
-        """Return a snapshot for this store, building once if necessary.
+    def ensure_index(
+        self, store, documents: Optional[Sequence[Document]] = None, tenant_id: str = "default"
+    ) -> IndexSnapshot:
+        """Return a snapshot for this store and tenant, building once if necessary.
 
-        If a snapshot for the same store already exists it is reused without a
-        collection read, even when an ingest job adds documents. Ingestion is
-        responsible for calling `refresh_from_store` after activation.
+        If a snapshot for the same store and tenant already exists it is reused
+        without a collection read.
         """
         if documents is not None:
-            return self.index_manager.ensure(documents, store=store)
+            return self.index_manager.ensure(documents, store=store, tenant_id=tenant_id)
         start = time.perf_counter()
-        snapshot = self.index_manager.snapshot
+        snapshot = self.index_manager.get_snapshot(tenant_id) or (
+            self.index_manager.snapshot if tenant_id == "default" else None
+        )
         if snapshot is not None and snapshot.store_id == id(store):
             return snapshot
         loaded = get_retrieval_documents(store)
         self.index_manager.last_build_documents_loaded = len(loaded)
-        built = self.index_manager.rebuild(loaded, store=store)
+        built = self.index_manager.ensure(loaded, store=store, tenant_id=tenant_id)
         built_ms = (time.perf_counter() - start) * 1000
         # build_ms only covers tokenization/BM25; keep the store read visible.
-        object.__setattr__(built, "build_ms", built_ms)
+        try:
+            object.__setattr__(built, "build_ms", built_ms)
+        except Exception:
+            pass
         return built
 
-    def invalidate(self, reason: str) -> None:
-        self.index_manager.invalidate(reason)
+    def invalidate(self, reason: str, tenant_id: Optional[str] = None) -> None:
+        self.index_manager.invalidate(reason, tenant_id=tenant_id)
+
+    def status(self, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.index_manager.status(tenant_id=tenant_id)
 
     # ------------------------------------------------------------------
     # Search
@@ -115,13 +126,18 @@ class RetrievalRuntime:
         if selected_mode not in {"dense", "bm25", "hybrid"}:
             raise ValueError(f"unknown retrieval mode: {selected_mode}")
 
-        snapshot = self.ensure_index(store)
         predicate = tenant_predicate(tenant_id)
+        overall_start = time.perf_counter()
         latencies: Dict[str, float] = {}
         dense: List[Document] = []
         sparse: List[Document] = []
         dense_score_map: Dict[str, float] = {}
         sparse_score_map: Dict[str, float] = {}
+        snapshot: Optional[IndexSnapshot] = None
+
+        # Lazy initialization: dense-only requests never construct the sparse index
+        if selected_mode in {"bm25", "hybrid"}:
+            snapshot = self.ensure_index(store, tenant_id=tenant_id)
 
         if selected_mode in {"dense", "hybrid"}:
             start = time.perf_counter()
@@ -168,11 +184,18 @@ class RetrievalRuntime:
             fused = fused_scores(ranked_lists, rrf_k=settings.FUSION_RRF_K)
             latencies["fusion"] = (time.perf_counter() - start) * 1000
 
+        elapsed_s = time.perf_counter() - overall_start
+        try:
+            from src.observability.metrics import metrics
+            metrics.observe("rag_retrieval_latency_seconds", elapsed_s, {"tenant_id": tenant_id, "mode": selected_mode})
+        except Exception:
+            pass
+
         return RetrievalResult(
             documents=documents,
             mode=selected_mode,
-            index_version=snapshot.version,
-            corpus_fingerprint=snapshot.corpus_fingerprint,
+            index_version=snapshot.version if snapshot else None,
+            corpus_fingerprint=snapshot.corpus_fingerprint if snapshot else None,
             dense_scores=dense_score_map,
             sparse_scores=sparse_score_map,
             fused_scores=fused,

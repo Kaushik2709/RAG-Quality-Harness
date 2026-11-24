@@ -327,7 +327,8 @@ def chunks_present(store, ids: Sequence[str]) -> bool:
     try:
         point_ids = _format_point_ids(store, expected)
         points = store.client.retrieve(collection_name=store.collection_name, ids=point_ids, with_payload=False)
-        return len(points) == len(expected)
+        retrieved_ids = {str(pt.id) for pt in points}
+        return retrieved_ids == set(point_ids)
     except Exception:  # noqa: BLE001
         return False
 

@@ -3,12 +3,18 @@
 Lifecycle per document version:
     staging -> active -> retired -> deleted
 
+State machine:
+    RECEIVED -> VALIDATING -> EXTRACTING -> CHUNKING -> EMBEDDING -> STAGING -> VERIFYING -> ACTIVATING -> ACTIVE
+    Failure paths:
+    -> FAILED
+    -> CANCELLED
+    -> ROLLBACK_REQUIRED
+
 New chunks are written as `staging` (never returned by retrieval filters),
-verified to exist, then activated. The previous version is retired in the same
-lock, the immutable retrieval snapshot is rebuilt, and only then are retired
+verified by exact chunk and point ID match, then activated. The previous version
+is retired, the immutable retrieval snapshot is rebuilt, and only then are retired
 vectors deleted. Any failure before snapshot activation restores the previous
-version and removes the partial write. A post-activation deletion failure cannot
-resurface retired rows because they are already filtered out.
+version and removes the partial write.
 """
 from __future__ import annotations
 
@@ -19,12 +25,13 @@ import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from langchain_core.documents import Document
 
 from src.config import settings
 from src.ingestion.chunker import chunk_documents
+from src.ingestion.document_registry import DocumentRecord, SQLDocumentRegistry, VersionRecord
 from src.ingestion.fingerprint import content_sha256, derive_document_id, normalize_text
 from src.ingestion.loaders import load_document
 from src.runtime.errors import DocumentNotFound, DocumentTooLarge, IngestionError
@@ -44,125 +51,105 @@ def _utcnow() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-@dataclass
-class VersionRecord:
-    version: int
-    content_sha256: str
-    chunk_ids: List[str] = field(default_factory=list)
-    chunk_count: int = 0
-    status: str = "staging"
-    created_at: str = field(default_factory=_utcnow)
-    activated_at: Optional[str] = None
-    retired_at: Optional[str] = None
-    embedding_model: str = ""
-    chunk_size: int = 0
-    chunk_overlap: int = 0
-    chunk_strategy: str = ""
-    error: Optional[str] = None
-
-
-@dataclass
-class DocumentRecord:
-    doc_id: str
-    tenant_id: str
-    source: str
-    active_version: Optional[int] = None
-    versions: Dict[int, VersionRecord] = field(default_factory=dict)
-    created_at: str = field(default_factory=_utcnow)
-    updated_at: str = field(default_factory=_utcnow)
-    deleted: bool = False
-
-    def as_dict(self) -> Dict[str, Any]:
-        data = asdict(self)
-        data["versions"] = {str(key): value for key, value in data["versions"].items()}
-        return data
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DocumentRecord":
-        versions = {int(key): VersionRecord(**value) for key, value in data.get("versions", {}).items()}
-        return cls(
-            doc_id=data["doc_id"],
-            tenant_id=data["tenant_id"],
-            source=data["source"],
-            active_version=data.get("active_version"),
-            versions=versions,
-            created_at=data.get("created_at", _utcnow()),
-            updated_at=data.get("updated_at", _utcnow()),
-            deleted=bool(data.get("deleted", False)),
-        )
-
-    def clone(self) -> "DocumentRecord":
-        return DocumentRecord.from_dict(self.as_dict())
-
-
 class DocumentRegistry:
-    """Small JSON registry. One process owns the file; a production multi-writer
-    deployment should replace it with a transactional store (documented)."""
+    """Document registry adapter supporting SQLite, PostgreSQL, and JSON compatibility."""
 
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: Optional[Union[str, Path]] = None, db_path: Optional[str] = None):
         self.path = Path(path) if path else None
         self._lock = threading.RLock()
-        self._docs: Dict[str, DocumentRecord] = {}
-        self._load()
+        if db_path:
+            self._sql = SQLDocumentRegistry(db_path=db_path)
+        elif self.path is None:
+            self._sql = SQLDocumentRegistry(db_path=":memory:")
+        elif str(self.path).endswith(".db"):
+            self._sql = SQLDocumentRegistry(db_path=str(self.path))
+        else:
+            p_str = str(self.path)
+            db_target = p_str.replace(".json", ".db") if p_str.endswith(".json") else f"{p_str}.db"
+            self._sql = SQLDocumentRegistry(db_path=db_target)
+        self._load_legacy_json()
 
-    @staticmethod
-    def _key(tenant_id: str, doc_id: str) -> str:
-        return f"{tenant_id}\x00{doc_id}"
-
-    def _load(self) -> None:
-        if not self.path or not self.path.exists():
+    def _load_legacy_json(self) -> None:
+        if not self.path or not self.path.exists() or not str(self.path).endswith(".json"):
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             for item in payload.get("documents", []):
                 record = DocumentRecord.from_dict(item)
-                self._docs[self._key(record.tenant_id, record.doc_id)] = record
+                if not self._sql.get(record.tenant_id, record.doc_id):
+                    self._sql.put(record)
         except Exception as exc:  # noqa: BLE001
             raise IngestionError(
                 f"document registry is corrupt at {self.path}: {type(exc).__name__}", component="ingestion"
             ) from exc
 
-    def _persist_locked(self) -> None:
-        if not self.path:
+    def _sync_json(self) -> None:
+        if not self.path or not str(self.path).endswith(".json"):
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"schema_version": 1, "documents": [r.as_dict() for r in self._docs.values()]}, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(tmp, self.path)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            conn = self._sql._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT DISTINCT tenant_id FROM documents")
+            tenants = [r["tenant_id"] for r in cur.fetchall()]
+            docs = []
+            for t in tenants:
+                docs.extend([r.as_dict() for r in self._sql.list(t, include_deleted=True)])
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"schema_version": 1, "documents": docs}, indent=2), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except Exception:
+            pass
 
     def get(self, tenant_id: str, doc_id: str) -> Optional[DocumentRecord]:
-        with self._lock:
-            record = self._docs.get(self._key(tenant_id, doc_id))
-            return record.clone() if record else None
+        return self._sql.get(tenant_id, doc_id)
 
-    def put(self, record: DocumentRecord) -> None:
-        with self._lock:
-            record.updated_at = _utcnow()
-            self._docs[self._key(record.tenant_id, record.doc_id)] = record.clone()
-            self._persist_locked()
+    def put(self, record: DocumentRecord, chunk_records: Optional[List[Dict[str, Any]]] = None) -> None:
+        self._sql.put(record, chunk_records=chunk_records)
+        self._sync_json()
 
     def remove(self, tenant_id: str, doc_id: str) -> Optional[DocumentRecord]:
-        with self._lock:
-            record = self._docs.pop(self._key(tenant_id, doc_id), None)
-            self._persist_locked()
-            return record
+        rec = self._sql.remove(tenant_id, doc_id)
+        self._sync_json()
+        return rec
 
     def list(self, tenant_id: str, include_deleted: bool = False) -> List[DocumentRecord]:
-        with self._lock:
-            return [
-                record.clone()
-                for record in self._docs.values()
-                if record.tenant_id == tenant_id and (include_deleted or not record.deleted)
-            ]
+        return self._sql.list(tenant_id, include_deleted=include_deleted)
+
+    def get_chunk_ids(self, tenant_id: str, doc_id: str, version: Optional[int] = None) -> List[str]:
+        return self._sql.get_chunk_ids(tenant_id, doc_id, version=version)
+
+    def create_job(self, *args, **kwargs):
+        return self._sql.create_job(*args, **kwargs)
+
+    def update_job(self, *args, **kwargs):
+        return self._sql.update_job(*args, **kwargs)
+
+    def get_job(self, *args, **kwargs):
+        return self._sql.get_job(*args, **kwargs)
+
+    def get_job_by_idempotency(self, *args, **kwargs):
+        return self._sql.get_job_by_idempotency(*args, **kwargs)
+
+    def get_stuck_jobs(self, *args, **kwargs):
+        return self._sql.get_stuck_jobs(*args, **kwargs)
+
+    def get_staged_versions(self, *args, **kwargs):
+        return self._sql.get_staged_versions(*args, **kwargs)
+
+    def get_retired_versions(self, *args, **kwargs):
+        return self._sql.get_retired_versions(*args, **kwargs)
+
+    def record_indexing_event(self, *args, **kwargs):
+        return self._sql.record_indexing_event(*args, **kwargs)
+
+    def record_audit_event(self, *args, **kwargs):
+        return self._sql.record_audit_event(*args, **kwargs)
 
     def reset(self) -> None:
-        with self._lock:
-            self._docs.clear()
-            if self.path and self.path.exists():
-                self.path.unlink()
+        self._sql.reset()
+        if self.path and self.path.exists():
+            self.path.unlink(missing_ok=True)
 
 
 @dataclass
@@ -199,7 +186,7 @@ class IngestionService:
         *,
         embeddings=None,
         index_manager: Optional[IndexManager] = None,
-        registry: Optional[DocumentRegistry] = None,
+        registry: Optional[Union[DocumentRegistry, SQLDocumentRegistry]] = None,
         embedding_model_id: Optional[str] = None,
     ):
         self.store = store
@@ -210,12 +197,18 @@ class IngestionService:
         else:
             from langchain_core.vectorstores import InMemoryVectorStore
 
-            # A volatile vector store must not be paired with a persisted registry
-            # (a restart would claim documents that no longer exist).
             path = None if isinstance(store, InMemoryVectorStore) else settings.INGESTION_REGISTRY_PATH
             self.registry = DocumentRegistry(path)
         self.embedding_model_id = embedding_model_id or settings.EMBEDDING_MODEL
-        self._write_lock = threading.Lock()
+        self._doc_locks: Dict[str, threading.Lock] = {}
+        self._locks_lock = threading.Lock()
+
+    def _get_doc_lock(self, tenant_id: str, doc_id: str) -> threading.Lock:
+        key = f"{tenant_id}\x00{doc_id}"
+        with self._locks_lock:
+            if key not in self._doc_locks:
+                self._doc_locks[key] = threading.Lock()
+            return self._doc_locks[key]
 
     def _embedder(self):
         if self.embeddings is not None:
@@ -239,6 +232,7 @@ class IngestionService:
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
         strategy: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> IngestResult:
         if not tenant_id or not tenant_id.strip():
             raise IngestionError("tenant_id is required", component="ingestion")
@@ -250,8 +244,18 @@ class IngestionService:
                 f"document exceeds MAX_DOCUMENT_CHARS={settings.MAX_DOCUMENT_CHARS}", component="ingestion"
             )
         resolved_id = derive_document_id(tenant_id, source, doc_id)
-        return self._ingest_normalized(
-            normalized,
+
+        doc = Document(
+            page_content=normalized,
+            metadata={
+                **(metadata or {}),
+                "source": source,
+                "doc_id": resolved_id,
+                "tenant_id": tenant_id,
+            },
+        )
+        return self._ingest_documents(
+            [doc],
             doc_id=resolved_id,
             source=source,
             tenant_id=tenant_id,
@@ -259,6 +263,7 @@ class IngestionService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             strategy=strategy,
+            idempotency_key=idempotency_key,
         )
 
     def ingest_file(
@@ -272,19 +277,39 @@ class IngestionService:
         chunk_size: Optional[int] = None,
         chunk_overlap: Optional[int] = None,
         strategy: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> IngestResult:
         docs = load_document(path)
-        text = "\n\n".join(doc.page_content for doc in docs)
-        pages = {idx + 1: doc.metadata.get("page") for idx, doc in enumerate(docs)}
-        if not normalize_text(text):
+        if not docs:
             raise IngestionError(f"no readable text extracted from {filename}", component="loader")
+        has_content = any(normalize_text(d.page_content) for d in docs)
+        if not has_content:
+            raise IngestionError(f"no readable text extracted from {filename}", component="loader")
+
         resolved_id = derive_document_id(tenant_id, filename, doc_id)
         enriched = dict(metadata or {})
         enriched.setdefault("file_name", filename)
-        if any(value for value in pages.values()):
+        if len(docs) > 1 or docs[0].metadata.get("page") is not None:
             enriched.setdefault("page_count", len(docs))
-        return self.ingest_text(
-            text,
+
+        # Preserve individual page documents and provenance
+        raw_docs: List[Document] = []
+        for doc in docs:
+            norm = normalize_text(doc.page_content)
+            if not norm:
+                continue
+            meta = {
+                **enriched,
+                "source": filename,
+                "doc_id": resolved_id,
+                "tenant_id": tenant_id,
+            }
+            if doc.metadata.get("page") is not None:
+                meta["page"] = doc.metadata["page"]
+            raw_docs.append(Document(page_content=norm, metadata=meta))
+
+        return self._ingest_documents(
+            raw_docs,
             doc_id=resolved_id,
             source=filename,
             tenant_id=tenant_id,
@@ -292,11 +317,12 @@ class IngestionService:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             strategy=strategy,
+            idempotency_key=idempotency_key,
         )
 
-    def _ingest_normalized(
+    def _ingest_documents(
         self,
-        normalized: str,
+        raw_docs: List[Document],
         *,
         doc_id: str,
         source: str,
@@ -305,13 +331,60 @@ class IngestionService:
         chunk_size: Optional[int],
         chunk_overlap: Optional[int],
         strategy: Optional[str],
+        idempotency_key: Optional[str] = None,
     ) -> IngestResult:
-        digest = content_sha256(normalized)
-        with self._write_lock:
+        full_content = "\n\n".join(d.page_content for d in raw_docs)
+        digest = content_sha256(full_content)
+        job_id = str(uuid.uuid4())
+
+        with self._get_doc_lock(tenant_id, doc_id):
+            # 1. State: RECEIVED
+            if idempotency_key and hasattr(self.registry, "get_job_by_idempotency"):
+                prior_job = self.registry.get_job_by_idempotency(tenant_id, idempotency_key)
+                if prior_job and prior_job.get("state") == "ACTIVE":
+                    existing = self.registry.get(tenant_id, doc_id)
+                    if existing and existing.active_version is not None:
+                        active = existing.versions.get(existing.active_version)
+                        if active and not existing.deleted:
+                            return IngestResult(
+                                doc_id=doc_id,
+                                version=active.version,
+                                chunks_created=0,
+                                status="unchanged",
+                                content_sha256=active.content_sha256,
+                                duplicate=True,
+                                activated=True,
+                                tenant_id=tenant_id,
+                            )
+
+            if hasattr(self.registry, "create_job"):
+                self.registry.create_job(
+                    job_id=job_id,
+                    tenant_id=tenant_id,
+                    doc_id=doc_id,
+                    version=0,
+                    idempotency_key=idempotency_key,
+                    state="RECEIVED",
+                )
+            if hasattr(self.registry, "record_audit_event"):
+                self.registry.record_audit_event(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    doc_id=doc_id,
+                    action="ingestion_received",
+                    details=json.dumps({"job_id": job_id, "source": source}),
+                )
+
+            # 2. State: VALIDATING
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="VALIDATING")
+
             existing = self.registry.get(tenant_id, doc_id)
             if existing and existing.active_version is not None:
                 active = existing.versions.get(existing.active_version)
                 if active and active.content_sha256 == digest and not existing.deleted:
+                    if hasattr(self.registry, "update_job"):
+                        self.registry.update_job(job_id, state="ACTIVE")
                     return IngestResult(
                         doc_id=doc_id,
                         version=active.version,
@@ -326,7 +399,10 @@ class IngestionService:
             previous = existing.clone() if existing else None
             version = (max(previous.versions) + 1) if previous and previous.versions else 1
 
-            # Reserved metadata cannot be overridden by callers.
+            # 3. State: EXTRACTING / PREPARING
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="EXTRACTING")
+
             safe_user_metadata = {
                 key: value
                 for key, value in (metadata or {}).items()
@@ -342,26 +418,36 @@ class IngestionService:
                     "source",
                 }
             }
-            raw = Document(
-                page_content=normalized,
-                metadata={
+
+            prepared_docs = []
+            for d in raw_docs:
+                d_meta = {
                     **safe_user_metadata,
+                    **d.metadata,
                     "doc_id": doc_id,
                     "source": source,
                     "tenant_id": tenant_id,
                     "document_version": version,
-                },
-            )
+                }
+                prepared_docs.append(Document(page_content=d.page_content, metadata=d_meta))
+
+            # 4. State: CHUNKING
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="CHUNKING")
+
             chunks = chunk_documents(
-                [raw],
+                prepared_docs,
                 strategy=strategy,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
                 document_version=version,
             )
             if not chunks:
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="FAILED", error="document could not be chunked")
                 raise IngestionError("document could not be chunked into valid pieces", component="ingestion")
-            ingestion_id = str(uuid.uuid4())
+
+            ingestion_id = job_id
             for chunk in chunks:
                 chunk.metadata.update(
                     version_state="staging",
@@ -370,6 +456,8 @@ class IngestionService:
                 )
             chunk_ids = [str(chunk.metadata["chunk_id"]) for chunk in chunks]
             if len(set(chunk_ids)) != len(chunk_ids):
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="FAILED", error="chunk identity collision")
                 raise IngestionError("chunk identity collision within document", component="ingestion")
 
             version_record = VersionRecord(
@@ -395,21 +483,40 @@ class IngestionService:
                 old = previous.versions.get(previous.active_version)
                 old_ids = list(old.chunk_ids) if old else []
 
-            # ---- Stage ------------------------------------------------
+            # 5. State: EMBEDDING & 6. State: STAGING
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="EMBEDDING")
+
             try:
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="STAGING")
                 add_with_embeddings(self.store, chunks, chunk_ids, self._embedder())
             except Exception as exc:  # noqa: BLE001
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="ROLLBACK_REQUIRED", error=str(exc))
                 self._cleanup_ids(chunk_ids)
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="FAILED", error=str(exc))
                 raise IngestionError(
                     f"embedding/staging failed: {type(exc).__name__}: {exc}", component="ingestion"
                 ) from exc
 
-            # ---- Verify -----------------------------------------------
+            # 7. State: VERIFYING
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="VERIFYING")
+
             if not chunks_present(self.store, chunk_ids):
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="ROLLBACK_REQUIRED", error="missing vectors in verification")
                 self._cleanup_ids(chunk_ids)
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="FAILED", error="verification failed")
                 raise IngestionError("staged chunks failed verification (missing vectors)", component="ingestion")
 
-            # ---- Activate + retire ------------------------------------
+            # 8. State: ACTIVATING
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="ACTIVATING")
+
             try:
                 if old_ids:
                     set_chunk_state(self.store, old_ids, "retired")
@@ -422,17 +529,61 @@ class IngestionService:
                     if old_version.version != version and old_version.status == "active":
                         old_version.status = "retired"
                         old_version.retired_at = _utcnow()
-                self.registry.put(record)
-                snapshot = self.index_manager.rebuild(get_retrieval_documents(self.store), store=self.store)
+
+                chunk_records = [
+                    {
+                        "chunk_id": c.metadata["chunk_id"],
+                        "tenant_id": tenant_id,
+                        "doc_id": doc_id,
+                        "version": version,
+                        "page": c.metadata.get("page"),
+                        "section_path": c.metadata.get("section_path"),
+                        "point_id": c.metadata["chunk_id"],
+                    }
+                    for c in chunks
+                ]
+                self.registry.put(record, chunk_records=chunk_records)
+                snapshot = self.index_manager.rebuild(
+                    get_retrieval_documents(self.store), store=self.store, tenant_id=tenant_id
+                )
+                if hasattr(self.registry, "record_indexing_event"):
+                    self.registry.record_indexing_event(
+                        event_id=str(uuid.uuid4()),
+                        tenant_id=tenant_id,
+                        event_type="rebuild",
+                        version=snapshot.version,
+                        details=f"Activated version {version} for doc {doc_id}",
+                    )
             except Exception as exc:  # noqa: BLE001
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="ROLLBACK_REQUIRED", error=str(exc))
                 self._rollback(previous, record, old_ids, chunk_ids)
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="FAILED", error=str(exc))
                 raise IngestionError(
                     f"activation failed; previous version preserved: {type(exc).__name__}: {exc}",
                     component="ingestion",
                 ) from exc
 
+            # 9. State: ACTIVE
+            if hasattr(self.registry, "update_job"):
+                self.registry.update_job(job_id, state="ACTIVE")
+            if hasattr(self.registry, "record_audit_event"):
+                self.registry.record_audit_event(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    doc_id=doc_id,
+                    action="version_activated",
+                    details=json.dumps({"version": version, "chunk_count": len(chunks)}),
+                )
+            try:
+                from src.observability.metrics import metrics
+                active_count = len([d for d in self.registry.list(tenant_id=tenant_id) if d.active_version is not None])
+                metrics.set_gauge("rag_active_document_versions", float(active_count), {"tenant_id": tenant_id})
+            except Exception:
+                pass
+
             warnings: List[str] = []
-            # ---- Delete retired vectors ------------------------------
             if old_ids:
                 try:
                     delete_chunks(self.store, old_ids)
@@ -476,46 +627,68 @@ class IngestionService:
             else:
                 self.registry.remove(current.tenant_id, current.doc_id)
         except Exception:  # noqa: BLE001
-            # Never keep serving a snapshot whose corpus no longer matches the store.
-            self.index_manager.invalidate("ingestion rollback failed")
+            self.index_manager.invalidate("ingestion rollback failed", tenant_id=current.tenant_id)
 
     # ------------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------------
     def delete_document(self, doc_id: str, *, tenant_id: str = "default") -> DeleteResult:
-        with self._write_lock:
+        with self._get_doc_lock(tenant_id, doc_id):
             record = self.registry.get(tenant_id, doc_id)
-            scanned = [
-                str(doc.metadata.get("chunk_id"))
-                for doc in get_indexed_documents(self.store)
-                if doc.metadata.get("doc_id") == doc_id and doc.metadata.get("tenant_id", "default") == tenant_id
-            ]
-            if record is None and not scanned:
-                raise DocumentNotFound(f"document '{doc_id}' was not found for this tenant", component="ingestion")
-            ids = set(scanned)
+            ids: set[str] = set()
             if record:
                 for version in record.versions.values():
                     ids.update(version.chunk_ids)
+            if hasattr(self.registry, "get_chunk_ids"):
+                ids.update(self.registry.get_chunk_ids(tenant_id, doc_id))
+
+            # Performance optimization: only scan collection if registry record is absent
+            if not ids and record is None:
+                scanned = [
+                    str(doc.metadata.get("chunk_id"))
+                    for doc in get_indexed_documents(self.store)
+                    if doc.metadata.get("doc_id") == doc_id and doc.metadata.get("tenant_id", "default") == tenant_id
+                ]
+                ids.update(scanned)
+
+            if not ids and record is None:
+                raise DocumentNotFound(f"document '{doc_id}' was not found for this tenant", component="ingestion")
+
             deleted = 0
-            try:
-                deleted = delete_chunks(self.store, list(ids))
-            except Exception as exc:  # noqa: BLE001
-                self.index_manager.invalidate("document deletion could not be applied to the vector store")
-                raise IngestionError(
-                    f"deletion failed: {type(exc).__name__}: {exc}", component="ingestion"
-                ) from exc
+            if ids:
+                try:
+                    deleted = delete_chunks(self.store, list(ids))
+                except Exception as exc:  # noqa: BLE001
+                    self.index_manager.invalidate("document deletion could not be applied to the vector store", tenant_id=tenant_id)
+                    raise IngestionError(
+                        f"deletion failed: {type(exc).__name__}: {exc}", component="ingestion"
+                    ) from exc
 
             warnings: List[str] = []
             index_refreshed = True
             try:
-                self.index_manager.rebuild(get_retrieval_documents(self.store), store=self.store)
+                self.index_manager.rebuild(get_retrieval_documents(self.store), store=self.store, tenant_id=tenant_id)
             except Exception as exc:  # noqa: BLE001
-                # Fail closed: a snapshot that may still contain deleted chunks must not serve queries.
-                self.index_manager.invalidate("index refresh after deletion failed")
+                self.index_manager.invalidate("index refresh after deletion failed", tenant_id=tenant_id)
                 index_refreshed = False
                 warnings.append(f"index refresh failed: {type(exc).__name__}")
 
             self.registry.remove(tenant_id, doc_id)
+            if hasattr(self.registry, "record_audit_event"):
+                self.registry.record_audit_event(
+                    id=str(uuid.uuid4()),
+                    tenant_id=tenant_id,
+                    doc_id=doc_id,
+                    action="document_deleted",
+                    details=json.dumps({"chunks_deleted": deleted}),
+                )
+            try:
+                from src.observability.metrics import metrics
+                active_count = len([d for d in self.registry.list(tenant_id=tenant_id) if d.active_version is not None])
+                metrics.set_gauge("rag_active_document_versions", float(active_count), {"tenant_id": tenant_id})
+            except Exception:
+                pass
+
             return DeleteResult(
                 doc_id=doc_id,
                 tenant_id=tenant_id,
@@ -526,8 +699,104 @@ class IngestionService:
             )
 
     # ------------------------------------------------------------------
+    # Crash Recovery & Orphan Cleanup
+    # ------------------------------------------------------------------
+    def recover_and_cleanup(
+        self,
+        *,
+        staging_timeout_seconds: float = 300.0,
+        stuck_job_timeout_seconds: float = 300.0,
+        retired_retention_seconds: float = 86400.0,
+    ) -> Dict[str, int]:
+        """Scans for stuck jobs, orphaned staging vectors, and old retired vectors."""
+        recovered_jobs = 0
+        cleaned_staged = 0
+        purged_retired = 0
+
+        # 1. Recover stuck jobs
+        if hasattr(self.registry, "get_stuck_jobs"):
+            stuck_jobs = self.registry.get_stuck_jobs(timeout_seconds=stuck_job_timeout_seconds)
+            for job in stuck_jobs:
+                tenant_id = job["tenant_id"]
+                doc_id = job["doc_id"]
+                job_id = job["job_id"]
+                if hasattr(self.registry, "get_chunk_ids"):
+                    chunk_ids = self.registry.get_chunk_ids(tenant_id, doc_id, version=job.get("version"))
+                    if chunk_ids:
+                        self._cleanup_ids(chunk_ids)
+                if hasattr(self.registry, "update_job"):
+                    self.registry.update_job(job_id, state="FAILED", error="recovered from stuck state after timeout")
+                recovered_jobs += 1
+
+        # 2. Clean up orphaned staging versions
+        if hasattr(self.registry, "get_staged_versions"):
+            staged_vers = self.registry.get_staged_versions(timeout_seconds=staging_timeout_seconds)
+            for sv in staged_vers:
+                tenant_id = sv["tenant_id"]
+                doc_id = sv["doc_id"]
+                version = sv["version"]
+                if hasattr(self.registry, "get_chunk_ids"):
+                    chunk_ids = self.registry.get_chunk_ids(tenant_id, doc_id, version=version)
+                    if chunk_ids:
+                        self._cleanup_ids(chunk_ids)
+                rec = self.registry.get(tenant_id, doc_id)
+                if rec and version in rec.versions:
+                    rec.versions[version].status = "failed"
+                    rec.versions[version].error = "staged version timed out and was cleaned up"
+                    self.registry.put(rec)
+                cleaned_staged += 1
+
+        # 3. Purge old retired vectors
+        if hasattr(self.registry, "get_retired_versions"):
+            retired_vers = self.registry.get_retired_versions(retention_seconds=retired_retention_seconds)
+            for rv in retired_vers:
+                tenant_id = rv["tenant_id"]
+                doc_id = rv["doc_id"]
+                version = rv["version"]
+                if hasattr(self.registry, "get_chunk_ids"):
+                    chunk_ids = self.registry.get_chunk_ids(tenant_id, doc_id, version=version)
+                    if chunk_ids:
+                        try:
+                            delete_chunks(self.store, chunk_ids)
+                        except Exception:
+                            pass
+                purged_retired += 1
+
+        return {
+            "stuck_jobs_recovered": recovered_jobs,
+            "staged_versions_cleaned": cleaned_staged,
+            "retired_versions_purged": purged_retired,
+        }
+
+    # ------------------------------------------------------------------
     # Queries
     # ------------------------------------------------------------------
+    def get_document(self, doc_id: str, *, tenant_id: str = "default") -> Optional[Dict[str, Any]]:
+        record = self.registry.get(tenant_id, doc_id)
+        if not record or record.deleted:
+            return None
+        active = record.versions.get(record.active_version) if record.active_version else None
+        return {
+            "doc_id": record.doc_id,
+            "tenant_id": record.tenant_id,
+            "source": record.source,
+            "active_version": record.active_version,
+            "status": active.status if active else "unknown",
+            "chunk_count": active.chunk_count if active else 0,
+            "content_sha256": active.content_sha256 if active else None,
+            "versions": [
+                {
+                    "version": version.version,
+                    "status": version.status,
+                    "chunks": version.chunk_count,
+                    "created_at": version.created_at,
+                    "activated_at": version.activated_at,
+                    "content_sha256": version.content_sha256,
+                }
+                for version in sorted(record.versions.values(), key=lambda v: v.version)
+            ],
+        }
+
     def list_documents(self, *, tenant_id: str = "default") -> List[Dict[str, Any]]:
         result = []
         for record in sorted(self.registry.list(tenant_id), key=lambda r: r.doc_id):

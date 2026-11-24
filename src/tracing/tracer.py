@@ -21,10 +21,25 @@ tracer = trace.get_tracer("rag.pipeline", "2.0.0")
 
 
 class PipelineStageSpan:
-    def __init__(self, stage: str, query_id: str, model_name: str = "n/a"):
+    def __init__(
+        self,
+        stage: str,
+        query_id: str,
+        model_name: str = "n/a",
+        tenant_id: str = "default",
+        subject_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+        credential_id: Optional[str] = None,
+        auth_method: Optional[str] = None,
+    ):
         self.stage = stage
         self.query_id = query_id
         self.model_name = model_name
+        self.tenant_id = tenant_id
+        self.subject_id = subject_id
+        self.request_id = request_id
+        self.credential_id = credential_id
+        self.auth_method = auth_method
         self.tokens_in = 0
         self.tokens_out = 0
         self.usage_source = "unavailable"
@@ -54,6 +69,16 @@ class PipelineStageSpan:
     def set_attribute(self, key: str, value: Any) -> None:
         if value is None:
             return
+        if key == "tenant_id":
+            self.tenant_id = str(value)
+        elif key == "subject_id":
+            self.subject_id = str(value)
+        elif key == "request_id":
+            self.request_id = str(value)
+        elif key == "credential_id":
+            self.credential_id = str(value)
+        elif key == "auth_method":
+            self.auth_method = str(value)
         if isinstance(value, (list, tuple, set)):
             value = ",".join(str(item) for item in value)
         self.attributes[key] = value
@@ -89,6 +114,11 @@ def _export_record(
         rerank_status=attributes.get("rerank.status"),
         error_category=span.error_category,
         status=span.status,
+        tenant_id=span.tenant_id or attributes.get("tenant_id", "default"),
+        subject_id=span.subject_id or attributes.get("subject_id"),
+        request_id=span.request_id or attributes.get("request_id"),
+        credential_id=span.credential_id or attributes.get("credential_id"),
+        auth_method=span.auth_method or attributes.get("auth_method"),
     )
     try:
         (exporter or get_exporter()).export(record)

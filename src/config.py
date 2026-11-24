@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     CONTEXT_MAX_CHUNKS: int = Field(default=12, gt=0)
     CONTEXT_DIVERSIFY_SOURCES: bool = Field(default=True)
     MIN_CITATION_QUOTE_CHARS: int = Field(default=12, ge=0)
+    CITATION_VALIDATION_POLICY: Literal["strict", "review", "disabled"] = Field(
+        default="strict",
+        description="strict: reject complete answer if any required citation fails; review: return marked partial result; disabled: allow without verification",
+    )
 
     # ------------------------------------------------------------------
     # Security
@@ -100,6 +104,10 @@ class Settings(BaseSettings):
     ENABLE_OUTPUT_GUARDRAILS: bool = Field(default=True, description="Enable output guardrails & secret/PII redaction")
     GUARDRAIL_BLOCK_PROMPT_INJECTION: bool = Field(default=True, description="Block execution if prompt injection is detected")
     GUARDRAIL_STRICT_MODE: bool = Field(default=False, description="Reject queries with any PII or sensitive data")
+    RETRIEVED_DOCUMENT_SECURITY_POLICY: Literal["allow", "mark_untrusted", "exclude", "quarantine"] = Field(
+        default="mark_untrusted",
+        description="allow: include evidence; mark_untrusted: isolate and wrap in untrusted data delimiters; exclude: drop high-risk evidence; quarantine: store in quarantine registry and drop",
+    )
     API_KEY: str = Field(default="", description="Static API key. Empty disables authentication (development only).")
     API_KEY_HEADER: str = Field(default="X-API-Key")
     TENANT_IDS: str = Field(default="", description="Comma-separated tenant allowlist; empty allows any X-Tenant-ID")

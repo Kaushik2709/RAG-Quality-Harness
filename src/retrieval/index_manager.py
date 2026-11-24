@@ -1,14 +1,13 @@
-"""Versioned, immutable retrieval index snapshots.
+"""Versioned, tenant-isolated immutable retrieval index snapshots.
 
-The previous request path called `get_indexed_documents(store)`, scrolling the
-whole collection, and rebuilt BM25 on every query. This module builds that
-index once per corpus revision, keeps snapshots immutable, and atomically swaps
-them. Readers never take the write lock, so queries are not blocked while a new
-snapshot is constructed.
+The BM25 index is constructed per tenant revision, keeping snapshots immutable
+and atomically swapped. Readers never take the write lock, so queries are not
+blocked while a new snapshot is constructed.
 
-A failed build leaves the previous snapshot active. If a deletion cannot be
-reflected in a new snapshot, the index is invalidated (fail closed) rather than
-continuing to serve documents the owner asked to delete.
+Tenant isolation guarantee:
+Each tenant maintains a distinct BM25 index and corpus statistics. Documents
+from Tenant B do not alter IDF or term frequency weights for Tenant A.
+Deletion in Tenant A invalidates only Tenant A's snapshot.
 """
 from __future__ import annotations
 
@@ -17,6 +16,7 @@ import hashlib
 import re
 import threading
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -32,14 +32,30 @@ def tokenize(text: str) -> List[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
-def corpus_fingerprint(documents: Sequence[Document]) -> str:
-    """Stable SHA-256 over (chunk id, content hash), order independent."""
+def resolve_tenant_id(documents: Sequence[Document], tenant_id: Optional[str] = None) -> str:
+    if tenant_id is not None and tenant_id != "default":
+        return tenant_id
+    if documents:
+        first_tenant = documents[0].metadata.get("tenant_id")
+        if first_tenant and all(d.metadata.get("tenant_id") == first_tenant for d in documents):
+            return str(first_tenant)
+    return tenant_id or "default"
+
+
+def corpus_fingerprint(documents: Sequence[Document], tenant_id: Optional[str] = None) -> str:
+    """Stable SHA-256 over tenant scope and (chunk id, content hash), order independent."""
+    resolved_tenant = resolve_tenant_id(documents, tenant_id)
     digest = hashlib.sha256()
+    digest.update(f"tenant:{resolved_tenant}\n".encode("utf-8"))
     rows = []
     for doc in documents:
-        chunk_id = str(doc.metadata.get("chunk_id", ""))
-        content_hash = hashlib.sha256(doc.page_content.encode("utf-8")).hexdigest()
-        rows.append((chunk_id, content_hash))
+        t_id = doc.metadata.get("tenant_id", "default")
+        v_state = doc.metadata.get("version_state", "active")
+        # Include documents matching tenant_id and active state (or unversioned legacy documents)
+        if t_id == resolved_tenant and v_state == "active":
+            chunk_id = str(doc.metadata.get("chunk_id", ""))
+            content_hash = hashlib.sha256(doc.page_content.encode("utf-8")).hexdigest()
+            rows.append((chunk_id, content_hash))
     for chunk_id, content_hash in sorted(rows):
         digest.update(chunk_id.encode("utf-8"))
         digest.update(b"\x00")
@@ -57,10 +73,16 @@ class IndexSnapshot:
     built_at: str
     build_ms: float
     chunk_count: int
+    tenant_id: str = "default"
     store_id: Optional[int] = field(default=None, compare=False)
     scorer: Optional[Callable[[List[str]], Sequence[float]]] = field(default=None, compare=False)
 
-    def search(self, query: str, k: int, predicate: Optional[Callable[[Document], bool]] = None) -> List[Tuple[Document, float]]:
+    def search(
+        self,
+        query: str,
+        k: int,
+        predicate: Optional[Callable[[Document], bool]] = None,
+    ) -> List[Tuple[Document, float]]:
         return sparse_search(self.documents, self.bm25, query, k, predicate)
 
 
@@ -114,86 +136,146 @@ def sparse_search(
 
 
 class IndexManager:
-    """Corpus-scoped snapshot manager.
+    """Tenant-scoped snapshot manager with immutable per-tenant BM25 indexes.
 
-    One manager can serve multiple stores (the API has one, evaluation builds
-    isolated ones). A snapshot is reused only while the store identity and the
-    caller-provided corpus fingerprint match; otherwise an explicit rebuild is
-    required.
+    Maintains separate immutable IndexSnapshot instances per tenant. Building,
+    updating, or invalidating one tenant's sparse index never impacts other tenants.
     """
 
     def __init__(self, *, max_chunks: int | None = None):
         self.max_chunks = max_chunks or settings.MAX_INDEX_CHUNKS
         self._lock = threading.RLock()
         self._build_lock = threading.Lock()
-        self._snapshot: Optional[IndexSnapshot] = None
-        self._version = 0
-        self._invalid_reason: Optional[str] = None
+        self._snapshots: Dict[str, IndexSnapshot] = {}  # tenant_id -> snapshot
+        self._versions: Dict[str, int] = defaultdict(int)  # tenant_id -> version
+        self._invalid_reasons: Dict[str, Optional[str]] = {}  # tenant_id -> reason
+        self._global_invalid_reason: Optional[str] = None
         self._last_error: Optional[str] = None
         self._last_attempt_at: Optional[str] = None
         self._builds = 0
         self._failures = 0
-        self._refresh_ms: Optional[float] = None
+        self._refresh_ms: Dict[str, float] = {}
         self.last_build_documents_loaded = 0
 
     # ------------------------------------------------------------------
     # Reads
     # ------------------------------------------------------------------
+    def get_snapshot(self, tenant_id: str = "default") -> Optional[IndexSnapshot]:
+        with self._lock:
+            if self._global_invalid_reason:
+                raise IndexUnavailable(
+                    f"all indexes invalidated: {self._global_invalid_reason}", component="sparse_index"
+                )
+            reason = self._invalid_reasons.get(tenant_id)
+            if reason:
+                raise IndexUnavailable(
+                    f"index for tenant '{tenant_id}' invalidated: {reason}", component="sparse_index"
+                )
+            return self._snapshots.get(tenant_id)
+
     @property
     def snapshot(self) -> Optional[IndexSnapshot]:
+        """Backward-compatible default tenant snapshot."""
         with self._lock:
-            if self._invalid_reason:
-                raise IndexUnavailable(f"index invalidated: {self._invalid_reason}", component="sparse_index")
-            return self._snapshot
+            if self._global_invalid_reason:
+                raise IndexUnavailable(
+                    f"all indexes invalidated: {self._global_invalid_reason}", component="sparse_index"
+                )
+            snap = self._snapshots.get("default")
+            if snap is not None:
+                return snap
+            if self._snapshots:
+                return next(iter(self._snapshots.values()))
+            return None
 
-    def require_snapshot(self) -> IndexSnapshot:
-        snapshot = self.snapshot
+    @property
+    def _snapshot(self) -> Optional[IndexSnapshot]:
+        """Backward-compatible alias for existing unit tests."""
+        return self.snapshot
+
+    def require_snapshot(self, tenant_id: str = "default") -> IndexSnapshot:
+        snapshot = self.get_snapshot(tenant_id)
         if snapshot is None:
-            raise IndexUnavailable("retrieval index has not been built", component="sparse_index")
+            raise IndexUnavailable(
+                f"retrieval index for tenant '{tenant_id}' has not been built", component="sparse_index"
+            )
         return snapshot
 
-    def ensure(self, documents: Sequence[Document], *, store: Any = None, fingerprint: str | None = None) -> IndexSnapshot:
-        """Reuse an existing snapshot; build only when the corpus differs.
-
-        This is the normal query path. It performs no collection scroll when a
-        matching snapshot exists, which is the core regression this module fixes.
-        """
-        fp = fingerprint or corpus_fingerprint(documents)
+    def ensure(
+        self,
+        documents: Sequence[Document],
+        *,
+        store: Any = None,
+        tenant_id: Optional[str] = None,
+        fingerprint: str | None = None,
+    ) -> IndexSnapshot:
+        """Reuse an existing snapshot for tenant_id; build only when the tenant corpus differs."""
+        target_tenant = resolve_tenant_id(documents, tenant_id)
+        tenant_docs = [
+            d
+            for d in documents
+            if d.metadata.get("tenant_id", "default") == target_tenant
+            and d.metadata.get("version_state", "active") == "active"
+        ]
+        fp = fingerprint or corpus_fingerprint(tenant_docs, tenant_id=target_tenant)
         store_id = id(store) if store is not None else None
+
         with self._lock:
-            snapshot = self._snapshot
-            invalid = self._invalid_reason
-        if invalid:
-            raise IndexUnavailable(f"index invalidated: {invalid}", component="sparse_index")
-        if snapshot and snapshot.corpus_fingerprint == fp and (store is None or snapshot.store_id == store_id):
-            return snapshot
-        # Double-check under the build lock. Concurrent first requests would
-        # otherwise each build the same snapshot after waiting for the lock.
-        with self._build_lock:
-            with self._lock:
-                snapshot = self._snapshot
-                invalid = self._invalid_reason
+            if self._global_invalid_reason:
+                raise IndexUnavailable(
+                    f"index invalidated: {self._global_invalid_reason}", component="sparse_index"
+                )
+            invalid = self._invalid_reasons.get(target_tenant)
             if invalid:
-                raise IndexUnavailable(f"index invalidated: {invalid}", component="sparse_index")
+                raise IndexUnavailable(
+                    f"index for tenant '{target_tenant}' invalidated: {invalid}", component="sparse_index"
+                )
+            snapshot = self._snapshots.get(target_tenant)
             if snapshot and snapshot.corpus_fingerprint == fp and (store is None or snapshot.store_id == store_id):
                 return snapshot
-            return self._rebuild_locked(documents, store=store, fingerprint=fp)
 
-    def rebuild(self, documents: Sequence[Document], *, store: Any = None, fingerprint: str | None = None) -> IndexSnapshot:
-        """Build outside the read lock, then swap atomically.
-
-        Serialised with `_build_lock` so concurrent ingestion events do not
-        stampede model/index construction. Regular readers are never blocked by
-        this lock.
-        """
+        # Under the build lock, double check and build
         with self._build_lock:
-            return self._rebuild_locked(documents, store=store, fingerprint=fingerprint)
+            with self._lock:
+                snapshot = self._snapshots.get(target_tenant)
+                invalid = self._invalid_reasons.get(target_tenant)
+                if invalid:
+                    raise IndexUnavailable(
+                        f"index for tenant '{target_tenant}' invalidated: {invalid}", component="sparse_index"
+                    )
+                if snapshot and snapshot.corpus_fingerprint == fp and (store is None or snapshot.store_id == store_id):
+                    return snapshot
+            return self._rebuild_locked(tenant_docs, store=store, tenant_id=target_tenant, fingerprint=fp)
+
+    def rebuild(
+        self,
+        documents: Sequence[Document],
+        *,
+        store: Any = None,
+        tenant_id: Optional[str] = None,
+        fingerprint: str | None = None,
+    ) -> IndexSnapshot:
+        """Build outside the read lock, then swap atomically."""
+        target_tenant = resolve_tenant_id(documents, tenant_id)
+        tenant_docs = [
+            d
+            for d in documents
+            if d.metadata.get("tenant_id", "default") == target_tenant
+            and d.metadata.get("version_state", "active") == "active"
+        ]
+        with self._build_lock:
+            return self._rebuild_locked(tenant_docs, store=store, tenant_id=target_tenant, fingerprint=fingerprint)
 
     def _rebuild_locked(
-        self, documents: Sequence[Document], *, store: Any = None, fingerprint: str | None = None
+        self,
+        documents: Sequence[Document],
+        *,
+        store: Any = None,
+        tenant_id: str = "default",
+        fingerprint: str | None = None,
     ) -> IndexSnapshot:
         started = time.perf_counter()
-        fp = fingerprint or corpus_fingerprint(documents)
+        fp = fingerprint or corpus_fingerprint(documents, tenant_id=tenant_id)
         docs = tuple(self._immutable_copy(documents))
         with self._lock:
             self._last_attempt_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -209,32 +291,35 @@ class IndexManager:
                 raise IndexBuildError("every chunk requires a non-empty chunk_id", component="sparse_index")
             if len(set(ids)) != len(ids):
                 raise IndexBuildError("chunk_id values must be unique within a corpus", component="sparse_index")
-            if corpus_fingerprint(docs) != fp:
+            if corpus_fingerprint(docs, tenant_id=tenant_id) != fp:
                 raise IndexBuildError("corpus changed while the index was being built", component="sparse_index")
             try:
                 from rank_bm25 import BM25Okapi
-            except ImportError as exc:  # pragma: no cover - dependency is pinned offline
+            except ImportError as exc:  # pragma: no cover
                 raise IndexBuildError("rank_bm25 is not installed", component="sparse_index") from exc
-            # An empty corpus is a valid state (all documents deleted), not a
-            # failed index build.
+
             bm25 = BM25Okapi([tokenize(d.page_content) or ["__empty__"] for d in docs]) if docs else None
             elapsed = (time.perf_counter() - started) * 1000
+
             with self._lock:
-                self._version += 1
+                self._versions[tenant_id] += 1
+                version = self._versions[tenant_id]
                 snapshot = IndexSnapshot(
-                    version=self._version,
+                    version=version,
                     corpus_fingerprint=fp,
                     documents=docs,
                     bm25=bm25,
                     built_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     build_ms=elapsed,
                     chunk_count=len(docs),
+                    tenant_id=tenant_id,
                     store_id=id(store) if store is not None else None,
                 )
-                self._snapshot = snapshot
-                self._invalid_reason = None
+                self._snapshots[tenant_id] = snapshot
+                self._invalid_reasons.pop(tenant_id, None)
+                self._global_invalid_reason = None
                 self._last_error = None
-                self._refresh_ms = elapsed
+                self._refresh_ms[tenant_id] = elapsed
                 return snapshot
         except Exception as exc:
             with self._lock:
@@ -244,30 +329,43 @@ class IndexManager:
                 raise
             raise IndexBuildError(f"index rebuild failed: {type(exc).__name__}: {exc}", component="sparse_index") from exc
 
-    def invalidate(self, reason: str) -> None:
-        """Stop serving a snapshot that may contain deleted or unauthorized data."""
+    def invalidate(self, reason: str, tenant_id: Optional[str] = None) -> None:
+        """Stop serving snapshot for tenant_id (or all tenants if None)."""
         with self._lock:
-            self._invalid_reason = reason
+            if tenant_id:
+                self._invalid_reasons[tenant_id] = reason
+                self._snapshots.pop(tenant_id, None)
+            else:
+                self._global_invalid_reason = reason
+                self._snapshots.clear()
             self._last_error = reason
 
     def reset(self) -> None:
         with self._lock:
-            self._snapshot = None
-            self._invalid_reason = None
+            self._snapshots.clear()
+            self._versions.clear()
+            self._invalid_reasons.clear()
+            self._global_invalid_reason = None
             self._last_error = None
-            self._version = 0
             self._builds = 0
             self._failures = 0
-            self._refresh_ms = None
+            self._refresh_ms.clear()
 
     # ------------------------------------------------------------------
     # Diagnostics
     # ------------------------------------------------------------------
-    def status(self) -> Dict[str, Any]:
+    def status(self, tenant_id: Optional[str] = None) -> Dict[str, Any]:
         with self._lock:
-            snapshot = self._snapshot
+            target_tenant = tenant_id or (
+                "default"
+                if "default" in self._snapshots
+                else (next(iter(self._snapshots.keys())) if self._snapshots else "default")
+            )
+            snapshot = self._snapshots.get(target_tenant)
+            invalid_reason = self._global_invalid_reason or self._invalid_reasons.get(target_tenant)
             return {
-                "status": "invalidated" if self._invalid_reason else ("ready" if snapshot else "not_built"),
+                "status": "invalidated" if invalid_reason else ("ready" if snapshot else "not_built"),
+                "tenant_id": target_tenant,
                 "version": snapshot.version if snapshot else None,
                 "corpus_fingerprint": snapshot.corpus_fingerprint if snapshot else None,
                 "chunk_count": snapshot.chunk_count if snapshot else 0,
@@ -277,9 +375,10 @@ class IndexManager:
                 "failures": self._failures,
                 "last_attempt_at": self._last_attempt_at,
                 "last_error": self._last_error,
-                "invalid_reason": self._invalid_reason,
-                "refresh_ms": round(self._refresh_ms, 2) if self._refresh_ms is not None else None,
+                "invalid_reason": invalid_reason,
+                "refresh_ms": round(self._refresh_ms.get(target_tenant, 0.0), 2),
                 "max_chunks": self.max_chunks,
+                "active_tenants": sorted(list(self._snapshots.keys())),
             }
 
     @staticmethod

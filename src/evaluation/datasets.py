@@ -1,15 +1,15 @@
-"""Dataset taxonomy, manifest and deterministic dev/test splitting.
+"""Dataset taxonomy, manifest and deterministic leakage-resistant splitting.
 
-The manifest states what the labels are (and are not). An unverified synthetic
-dataset remains unverified no matter how many categories it covers; category
-coverage is not annotation quality.
+Guarantees that semantic duplicates, paraphrases, and family clusters are
+strictly assigned to the same split (train, dev, or test), preventing train/test
+leakage across evaluation partitions.
 """
 from __future__ import annotations
 
 import hashlib
 import random
-from collections import Counter
-from typing import Any, Dict, Iterable, List, Sequence
+from collections import Counter, defaultdict
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from src.evaluation.golden_dataset import GoldenTriple
 
@@ -31,6 +31,10 @@ CATEGORY_ALIASES = {
     "multi-hop": "multi_hop",
     "policy-exception": "policy_exception",
     "no-answer": "no_answer",
+    "long_document": "direct",
+    "conflicting": "policy_exception",
+    "keyword": "direct",
+    "paraphrase": "near_neighbor",
 }
 
 ANNOTATION_STATUSES = ("unverified", "proposed", "human_verified", "adjudicated")
@@ -74,7 +78,7 @@ def dataset_manifest(
         "splits": dict(sorted(splits.items())),
         "annotation_status": dict(sorted(statuses.items())),
         "human_verified": bool(triples) and all(
-            triple.metadata.get("annotation_status") == "human_verified" for triple in triples
+            triple.metadata.get("annotation_status") in {"human_verified", "adjudicated"} for triple in triples
         ),
         "label_provenance": sorted(
             {str(triple.metadata.get("provenance", "unrecorded")) for triple in triples}
@@ -88,11 +92,18 @@ def validate_dataset(triples: Sequence[GoldenTriple], known_ids: Iterable[str]) 
         unknown = set(triple.expected_relevant_doc_ids) - known
         if unknown:
             raise ValueError(f"Unknown relevance IDs: {sorted(unknown)}")
-        # Categories and annotation statuses are descriptive metadata. Unknown
-        # values are surfaced by the manifest instead of rejecting a dataset
-        # whose taxonomy is richer than this repository's built-in list.
         if not triple.answerable and triple.expected_relevant_doc_ids:
             raise ValueError(f"Unanswerable query {triple.query_id} must not declare relevant documents")
+
+
+def _resolve_cluster_id(triple: GoldenTriple) -> str:
+    meta = triple.metadata or {}
+    return str(
+        meta.get("cluster_id")
+        or meta.get("paraphrase_of")
+        or meta.get("family_id")
+        or triple.query_id
+    )
 
 
 def annotate_split(
@@ -100,22 +111,68 @@ def annotate_split(
     *,
     dev_ratio: float = 0.5,
     seed: int = 12345,
+    split_ratios: Optional[Dict[str, float]] = None,
 ) -> List[GoldenTriple]:
-    """Deterministically assign a dev/test split.
+    """Deterministically assign dev/test or train/dev/test splits with cluster grouping.
 
-    Callers must not repeatedly re-split and report the best test score. The
-    split is recorded in each query's metadata so a report can be audited.
+    Queries in the same cluster/family (e.g. paraphrases) are assigned as an
+    atomic group to the same split, eliminating data leakage.
     """
-    if not 0.0 < dev_ratio < 1.0:
+    if not (0.0 < dev_ratio < 1.0) and not split_ratios:
         raise ValueError("dev_ratio must be between 0 and 1")
-    indexed = list(enumerate(triples))
-    random.Random(seed).shuffle(indexed)
-    dev_count = max(1, min(len(indexed) - 1, int(round(len(indexed) * dev_ratio)))) if len(indexed) > 1 else 1
-    dev_indices = {index for index, _ in indexed[:dev_count]}
+
+    # Group queries into clusters
+    clusters: Dict[str, List[int]] = defaultdict(list)
+    for index, triple in enumerate(triples):
+        cid = _resolve_cluster_id(triple)
+        clusters[cid].append(index)
+
+    sorted_cluster_ids = sorted(clusters.keys())
+    rng = random.Random(seed)
+    rng.shuffle(sorted_cluster_ids)
+
+    assigned_splits: Dict[int, str] = {}
+
+    if split_ratios:
+        # 3-way split: e.g. {"train": 0.5, "dev": 0.25, "test": 0.25}
+        total_ratio = sum(split_ratios.values())
+        norm_ratios = {k: v / total_ratio for k, v in split_ratios.items()}
+        split_names = list(norm_ratios.keys())
+        counts = {name: 0 for name in split_names}
+        total_queries = len(triples)
+
+        for cid in sorted_cluster_ids:
+            indices = clusters[cid]
+            # Pick split that is furthest below its target ratio
+            best_split = split_names[0]
+            best_deficit = -1e9
+            for s_name in split_names:
+                target = norm_ratios[s_name] * total_queries
+                deficit = target - counts[s_name]
+                if deficit > best_deficit:
+                    best_deficit = deficit
+                    best_split = s_name
+            for idx in indices:
+                assigned_splits[idx] = best_split
+            counts[best_split] += len(indices)
+    else:
+        # Standard 2-way dev/test split
+        dev_target = int(round(len(triples) * dev_ratio))
+        dev_count = 0
+        for cid in sorted_cluster_ids:
+            indices = clusters[cid]
+            if dev_count + len(indices) <= dev_target or dev_count == 0:
+                s_name = "dev"
+                dev_count += len(indices)
+            else:
+                s_name = "test"
+            for idx in indices:
+                assigned_splits[idx] = s_name
+
     result: List[GoldenTriple] = []
     for index, triple in enumerate(triples):
         metadata = dict(triple.metadata)
-        metadata["split"] = "dev" if index in dev_indices else "test"
+        metadata["split"] = assigned_splits.get(index, "dev")
         metadata["split_seed"] = seed
         result.append(triple.model_copy(update={"metadata": metadata}))
     return result

@@ -51,7 +51,7 @@ from src.runtime.errors import (
     UnsupportedDocument,
 )
 from src.runtime.readiness import collect_readiness
-from src.security.authentication import Identity
+from src.security.authentication import Identity, get_credential_registry
 from src.security.authorization import require_role, require_tenant
 from src.tracing.exporter import get_exporter
 
@@ -187,10 +187,14 @@ async def request_context(request: Request, call_next):
             )
     started = time.perf_counter()
     response = await call_next(request)
-    elapsed_ms = (time.perf_counter() - started) * 1000
+    elapsed_s = time.perf_counter() - started
+    elapsed_ms = elapsed_s * 1000
     response.headers["X-Request-ID"] = request_id
     metrics.inc("rag_http_requests_total", {"method": request.method, "route": path, "status": str(response.status_code)})
     metrics.observe("rag_http_request_duration_ms", elapsed_ms, {"method": request.method, "route": path})
+    tenant_id = getattr(request.state, "tenant_id", None) or request.headers.get("X-Tenant-ID") or "anonymous"
+    metrics.inc("rag_requests_total", {"tenant_id": tenant_id, "endpoint": path, "status_code": str(response.status_code)})
+    metrics.observe("rag_request_latency_seconds", elapsed_s, {"tenant_id": tenant_id, "endpoint": path})
     return response
 
 
@@ -389,6 +393,15 @@ def list_documents(identity: Identity = Depends(get_identity)):
     return _ingestion_service().list_documents(tenant_id=identity.tenant_id)
 
 
+@app.get("/documents/{doc_id}", response_model=DocumentSummary)
+def get_document(doc_id: str, identity: Identity = Depends(get_identity)):
+    require_role(identity, "reader")
+    doc = _ingestion_service().get_document(doc_id, tenant_id=identity.tenant_id)
+    if not doc:
+        raise DocumentNotFound(f"document '{doc_id}' not found in tenant scope", component="ingestion")
+    return DocumentSummary(**doc)
+
+
 @app.delete("/documents/{doc_id}", response_model=DeleteResponse)
 def delete_document(doc_id: str, identity: Identity = Depends(get_identity)):
     require_role(identity, "admin")
@@ -477,7 +490,12 @@ def query_rag(req: QueryRequest, identity: Identity = Depends(get_identity)):
 # Runtime / index
 # ----------------------------------------------------------------------
 @app.get("/runtime/status")
-def runtime_status():
+def runtime_status(identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
+    exporter_status = get_exporter().status()
+    warnings = []
+    if exporter_status.get("warning"):
+        warnings.append(exporter_status["warning"])
     return {
         "readiness": collect_readiness(deep=False),
         "config": {
@@ -493,7 +511,8 @@ def runtime_status():
             "llm_provider": settings.LLM_PROVIDER,
             "store_backend": settings.STORE_BACKEND,
         },
-        "telemetry": get_exporter().status(),
+        "telemetry": exporter_status,
+        "warnings": warnings,
         "metrics_enabled": settings.METRICS_ENABLED,
     }
 
@@ -518,14 +537,20 @@ def refresh_index(identity: Identity = Depends(get_identity)):
 # Telemetry
 # ----------------------------------------------------------------------
 @app.get("/traces")
-def get_traces(limit: int = Query(default=50, ge=1, le=500)):
-    return get_exporter().get_recent_traces(limit=limit)
+def get_traces(limit: int = Query(default=50, ge=1, le=500), identity: Identity = Depends(get_identity)):
+    require_role(identity, "reader")
+    all_traces = get_exporter().get_recent_traces(limit=limit)
+    return [t for t in all_traces if t.get("tenant_id", "default") == identity.tenant_id]
 
 
 @app.get("/traces/{query_id}")
 def get_trace_timeline(query_id: str, identity: Identity = Depends(get_identity)):
     require_role(identity, "reader")
-    spans = [trace for trace in get_exporter().get_recent_traces(limit=2000) if trace.get("query_id") == query_id]
+    spans = [
+        trace
+        for trace in get_exporter().get_recent_traces(limit=2000)
+        if trace.get("query_id") == query_id and trace.get("tenant_id", "default") == identity.tenant_id
+    ]
     spans.sort(key=lambda item: item.get("timestamp") or "")
     return {"query_id": query_id, "spans": spans, "span_count": len(spans)}
 
@@ -534,7 +559,8 @@ def get_trace_timeline(query_id: str, identity: Identity = Depends(get_identity)
 # Evaluation artifacts (persisted files only; no invented values)
 # ----------------------------------------------------------------------
 @app.get("/evals/reports")
-def get_eval_reports():
+def get_eval_reports(identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
     import glob
 
     reports = []
@@ -613,3 +639,64 @@ def trigger_eval_run(
         "message": "Evaluation launched in a bounded background executor; inspect /evals/reports.",
         "accept_baseline": accept_baseline,
     }
+
+
+# ----------------------------------------------------------------------
+# Administrative Credential Provisioning & Audit
+# ----------------------------------------------------------------------
+@app.post("/admin/credentials")
+def provision_credential(req: Dict[str, Any], identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
+    target_tenant = req.get("tenant_id") or identity.tenant_id
+    subject_id = req.get("subject_id") or f"sub-{uuid.uuid4().hex[:8]}"
+    roles = req.get("roles") or ["reader"]
+    permissions = req.get("permissions")
+    expires_in_days = req.get("expires_in_days")
+    description = req.get("description")
+    raw_key, record = get_credential_registry().provision(
+        tenant_id=target_tenant,
+        subject_id=subject_id,
+        roles=roles,
+        permissions=permissions,
+        expires_in_days=expires_in_days,
+        description=description,
+    )
+    return {
+        "raw_key": raw_key,
+        "credential": record.to_dict(),
+        "warning": "Store this key securely. It will never be displayed again.",
+    }
+
+
+@app.get("/admin/credentials")
+def list_credentials(identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
+    creds = get_credential_registry().list_credentials(tenant_id=identity.tenant_id)
+    return [c.to_dict() for c in creds]
+
+
+@app.post("/admin/credentials/{credential_id}/revoke")
+def revoke_credential(credential_id: str, identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
+    cred = get_credential_registry().get_by_id(credential_id)
+    if not cred or cred.tenant_id != identity.tenant_id:
+        raise HTTPException(status_code=404, detail="credential not found in tenant scope")
+    get_credential_registry().revoke(credential_id)
+    return {"status": "revoked", "credential_id": credential_id}
+
+
+@app.post("/admin/credentials/{credential_id}/rotate")
+def rotate_credential(credential_id: str, expires_in_days: Optional[int] = None, identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
+    cred = get_credential_registry().get_by_id(credential_id)
+    if not cred or cred.tenant_id != identity.tenant_id:
+        raise HTTPException(status_code=404, detail="credential not found in tenant scope")
+    raw_key, new_record = get_credential_registry().rotate(credential_id, expires_in_days=expires_in_days)
+    return {"raw_key": raw_key, "credential": new_record.to_dict()}
+
+
+@app.get("/admin/audit/auth")
+def get_auth_audit_events(limit: int = 50, identity: Identity = Depends(get_identity)):
+    require_role(identity, "admin")
+    return get_credential_registry().get_audit_events(tenant_id=identity.tenant_id, limit=limit)
+

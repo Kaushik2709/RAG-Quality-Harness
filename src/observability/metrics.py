@@ -12,13 +12,14 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Tuple
 
 _LATENCY_BUCKETS_MS = (5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000)
+_LATENCY_BUCKETS_SECONDS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 
 
 class MetricsRegistry:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counters: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = defaultdict(float)
-        self._gauges: Dict[str, float] = {}
+        self._gauges: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = {}
         self._histograms: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], List[int]] = {}
         self._hist_sums: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], float] = defaultdict(float)
         self._hist_counts: Dict[Tuple[str, Tuple[Tuple[str, str], ...]], int] = defaultdict(int)
@@ -33,15 +34,17 @@ class MetricsRegistry:
         with self._lock:
             self._counters[key] += value
 
-    def set_gauge(self, name: str, value: float) -> None:
+    def set_gauge(self, name: str, value: float, labels: Dict[str, str] | None = None) -> None:
+        key = (name, self._key(labels))
         with self._lock:
-            self._gauges[name] = float(value)
+            self._gauges[key] = float(value)
 
     def observe(self, name: str, value: float, labels: Dict[str, str] | None = None) -> None:
         key = (name, self._key(labels))
+        bucket_defs = _LATENCY_BUCKETS_SECONDS if name.endswith("_seconds") else _LATENCY_BUCKETS_MS
         with self._lock:
-            buckets = self._histograms.setdefault(key, [0] * (len(_LATENCY_BUCKETS_MS) + 1))
-            for idx, edge in enumerate(_LATENCY_BUCKETS_MS):
+            buckets = self._histograms.setdefault(key, [0] * (len(bucket_defs) + 1))
+            for idx, edge in enumerate(bucket_defs):
                 if value <= edge:
                     buckets[idx] += 1
                     break
@@ -67,14 +70,15 @@ class MetricsRegistry:
                 lines.append(f"# TYPE {name} counter")
                 lines.append(f"{name}{_render_labels(label_key)} {value:g}")
 
-            for name, value in sorted(self._gauges.items()):
+            for (name, label_key), value in sorted(self._gauges.items()):
                 lines.append(f"# TYPE {name} gauge")
-                lines.append(f"{name} {value:g}")
+                lines.append(f"{name}{_render_labels(label_key)} {value:g}")
 
             for (name, label_key), buckets in sorted(self._histograms.items()):
                 lines.append(f"# TYPE {name} histogram")
+                bucket_defs = _LATENCY_BUCKETS_SECONDS if name.endswith("_seconds") else _LATENCY_BUCKETS_MS
                 cumulative = 0
-                for edge, count in zip(_LATENCY_BUCKETS_MS, buckets[:-1]):
+                for edge, count in zip(bucket_defs, buckets[:-1]):
                     cumulative += count
                     lines.append(f"{name}_bucket{_render_labels(label_key + (('le', str(edge)),))} {cumulative}")
                 cumulative += buckets[-1]

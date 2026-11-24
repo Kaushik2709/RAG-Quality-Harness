@@ -8,7 +8,12 @@ from typing import Callable, Dict, List, Optional, Sequence
 from langchain_core.documents import Document
 
 from src.config import settings
-from src.security.document_guardrails import UntrustedScan, render_evidence_block, scan_documents
+from src.security.document_guardrails import (
+    UntrustedScan,
+    enforce_evidence_security,
+    render_evidence_block,
+    scan_documents,
+)
 
 
 @dataclass
@@ -63,11 +68,14 @@ def build_context(
     if budget <= 0 or limit <= 0:
         raise ValueError("context budget and chunk limit must be positive")
 
+    # 0. Apply retrieved document security policy (allow, mark_untrusted, exclude, quarantine)
+    secured_docs, initial_scan = enforce_evidence_security(documents)
+
     # 1. Remove exact duplicate content, retaining the first (highest-ranked) copy.
     seen_hashes = set()
     deduped: List[Document] = []
-    dropped = 0
-    for doc in documents:
+    dropped = len(documents) - len(secured_docs)
+    for doc in secured_docs:
         digest = hashlib.sha256(doc.page_content.strip().encode("utf-8")).hexdigest()
         if digest in seen_hashes:
             dropped += 1
@@ -137,6 +145,8 @@ def build_context(
     text = "\n\n".join(blocks)
     total_estimated, estimated = count_tokens(text, tokenizer) if text else (0, tokenizer is None)
     scan = scan_documents(selected)
+    scan.excluded_chunk_ids = initial_scan.excluded_chunk_ids
+    scan.quarantined_chunk_ids = initial_scan.quarantined_chunk_ids
     return ContextBundle(
         chunks=selected,
         text=text,

@@ -52,6 +52,81 @@ Equipped with an OpenTelemetry tracing harness (`gen_ai.*` semantic conventions)
 
 ---
 
+## 🔒 Iteration 2 Architecture & Security Hardening
+
+Iteration 2 transitions the platform from a prototype to a multi-tenant, operationally hardened system featuring cryptographic tenant credentials, tenant-isolated sparse retrieval, strict claim-level citation validation, retrieved-evidence prompt injection defense, and transactional 9-state document staging.
+
+### 1. Multi-Tenant Authenticated Request Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Tenant Client
+    participant API as FastAPI Router
+    participant Auth as Credential Registry
+    participant Guard as Guardrails & Policy
+    participant Engine as Retrieval Runtime
+    participant Gen as LLM & Citation Engine
+    participant Trace as OTel Trace Exporter
+
+    Client->>API: POST /query (X-API-Key: rag_live_...)
+    API->>Auth: Verify SHA-256 hash & tenant scope
+    alt Invalid / Revoked / Expired / Tenant Mismatch
+        Auth-->>API: 401 Unauthorized / 403 Forbidden
+        API-->>Client: Fail-closed error response
+    else Valid Credential
+        Auth-->>API: Resolved Identity (tenant_id, roles, permissions)
+    end
+    API->>Guard: Input Guardrail (injection scan)
+    API->>Engine: Search (tenant-scoped BM25 + Qdrant payload filter)
+    Engine-->>API: Isolated Candidate Documents
+    API->>Guard: Document Guardrail (untrusted tagging / exclusion)
+    API->>Gen: Generate Structured Answer with Claims & Citations
+    API->>Gen: Strict Claim-Level Validation (quote, version, tenant, numbers)
+    alt Validation Failed (in strict mode)
+        Gen-->>API: Abstained Answer (unsupported claims rejected)
+    else Fully Supported
+        Gen-->>API: Validated Grounded Answer
+    end
+    API->>Trace: Async non-blocking trace export (queue bounded)
+    API-->>Client: 200 OK Response (StructuredAnswer + Citations)
+```
+
+### 2. Transactional Document Ingestion & Safe Activation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Tenant Ingestor / Admin
+    participant Svc as Ingestion Service
+    participant Reg as SQL Document Registry
+    participant Store as Vector Store (Qdrant)
+    participant Index as Tenant Index Manager
+
+    Admin->>Svc: Ingest Document (tenant_id, content, metadata)
+    Svc->>Reg: Record Job (state: RECEIVED -> VALIDATING)
+    Svc->>Svc: Extract & Chunk (page provenance preserved)
+    Svc->>Svc: Embed Chunks
+    Svc->>Reg: Transition to STAGING
+    Svc->>Store: Write staged vectors (state: "staged")
+    Svc->>Store: Verify chunk IDs present (chunks_present)
+    alt Staging verification fails
+        Svc->>Store: Delete staged vectors (rollback)
+        Svc->>Reg: Mark Job FAILED / ROLLBACK_REQUIRED
+        Svc-->>Admin: Ingestion Error (previous version untouched)
+    else Verification succeeds
+        Svc->>Reg: Transition to ACTIVATING
+        Svc->>Store: Set staged vectors to "active"
+        Svc->>Store: Retire previous version vectors
+        Svc->>Index: Rebuild isolated tenant BM25 snapshot
+        Svc->>Reg: Transition to ACTIVE (commit active_version)
+        Svc->>Store: Asynchronously purge retired vectors
+        Svc-->>Admin: 200 IngestResult (active_version, chunk_count)
+    end
+```
+
+---
+
 ## 🔗 LangChain & LangGraph Ecosystem Integration
 
 - **Document Loaders**: `langchain_community.document_loaders` (`TextLoader`, `PyPDFLoader`, `BSHTMLLoader`)
