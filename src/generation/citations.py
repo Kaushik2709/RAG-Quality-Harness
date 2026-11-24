@@ -118,7 +118,8 @@ class CitationValidation:
     claim_coverage: float = 0.0  # supported_claims / total_claims
     retrieved_evidence_utilization: float = 0.0  # distinct_cited_chunks / total_retrieved_chunks
     citation_recall: float = 0.0  # backward compatibility alias for retrieved_evidence_utilization
-    semantic_entailment_score: float = 0.0
+    semantic_entailment_score: Optional[float] = None
+    semantic_entailment_status: str = "not_evaluated"
     contradictory_evidence: bool = False
     supported: bool = False  # whether at least 1 citation succeeded (backward compatibility)
     is_fully_supported: bool = False  # strict validation indicator
@@ -134,7 +135,8 @@ class CitationValidation:
             "claim_coverage": round(self.claim_coverage, 4),
             "retrieved_evidence_utilization": round(self.retrieved_evidence_utilization, 4),
             "citation_recall": round(self.citation_recall, 4),
-            "semantic_entailment_score": round(self.semantic_entailment_score, 4),
+            "semantic_entailment_score": round(self.semantic_entailment_score, 4) if self.semantic_entailment_score is not None else None,
+            "semantic_entailment_status": self.semantic_entailment_status,
             "contradictory_evidence": self.contradictory_evidence,
             "supported": self.supported,
             "is_fully_supported": self.is_fully_supported,
@@ -212,7 +214,7 @@ def validate_citations(
             claim_coverage=1.0,
             retrieved_evidence_utilization=0.0,
             citation_recall=0.0,
-            semantic_entailment_score=1.0,
+            semantic_entailment_score=None,
             supported=True,
             is_fully_supported=True,
         )
@@ -309,13 +311,10 @@ def validate_citations(
 
     if is_fully_supported:
         status = "validated"
-        semantic_score = 1.0
     elif accepted and supported_claims_count > 0:
         status = "partially_validated"
-        semantic_score = round(claim_cov * precision, 4)
     else:
         status = "rejected"
-        semantic_score = 0.0
 
     return CitationValidation(
         status=status,
@@ -327,7 +326,7 @@ def validate_citations(
         claim_coverage=claim_cov,
         retrieved_evidence_utilization=evidence_util,
         citation_recall=evidence_util,
-        semantic_entailment_score=semantic_score,
+        semantic_entailment_score=None,
         contradictory_evidence=contradictory_evidence,
         supported=bool(accepted),  # backward compatibility: at least 1 citation accepted
         is_fully_supported=is_fully_supported,

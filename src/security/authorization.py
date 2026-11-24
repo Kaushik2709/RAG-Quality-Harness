@@ -8,7 +8,8 @@ from src.security.authentication import Identity
 
 def require_role(identity: Identity, role: str) -> None:
     """Enforce role requirement. Admin role satisfies reader and ingestor checks."""
-    if role not in identity.roles and "admin" not in identity.roles:
+    has_platform_admin = "platform_admin" in identity.roles and "platform:credentials:manage" in identity.permissions
+    if role not in identity.roles and not (role in {"reader", "ingestor"} and "admin" in identity.roles) and not has_platform_admin:
         metrics.inc("rag_auth_failures_total", {"reason": f"missing_role_{role}"})
         raise AuthorizationError(f"role '{role}' is required", component="authorization")
 

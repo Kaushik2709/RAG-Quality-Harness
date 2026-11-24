@@ -6,22 +6,27 @@ from fastapi.testclient import TestClient
 
 from src.api.dependencies import reset_limiter
 from src.runtime.errors import AuthenticationError, AuthorizationError
-from src.security.authentication import Identity, authenticate
+from src.security.authentication import Identity, authenticate, get_credential_registry
 from src.security.authorization import require_role, require_tenant
 from src.security.ratelimit import TokenBucketLimiter
 
 
 @pytest.fixture
 def client(monkeypatch):
+    from types import SimpleNamespace
     from src.api import main
 
     monkeypatch.setattr(main, "BASE_DIR", "/nonexistent-rag-test-dir")
     monkeypatch.setattr("src.api.main.settings.RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr("src.api.main.settings.DEV_AUTH_ENABLED", True)
+    monkeypatch.setattr("src.api.main.settings.DEV_TENANT_ID", "development")
+    monkeypatch.setattr(main, "_ingestion_service", lambda: SimpleNamespace(recover_and_cleanup=lambda: {}))
     return TestClient(main.app)
 
 
 def test_authentication_disabled_is_explicit(monkeypatch):
-    monkeypatch.setattr("src.security.authentication.settings.API_KEY", "")
+    monkeypatch.setattr("src.security.authentication.settings.DEV_AUTH_ENABLED", True)
+    monkeypatch.setattr("src.security.authentication.settings.DEV_TENANT_ID", "tenant-a")
     identity = authenticate(None, "tenant-a")
     assert identity.authenticated is False
     assert identity.auth_method == "disabled"
@@ -31,15 +36,13 @@ def test_authentication_disabled_is_explicit(monkeypatch):
 def test_authentication_enforces_key_and_tenant_allowlist(monkeypatch):
     monkeypatch.setattr("src.security.authentication.settings.API_KEY", "secret-key")
     monkeypatch.setattr("src.security.authentication.settings.TENANT_IDS", "t1,t2")
+    monkeypatch.setattr("src.security.authentication.settings.DEV_AUTH_ENABLED", False)
     with pytest.raises(AuthenticationError):
         authenticate(None)
     with pytest.raises(AuthenticationError):
         authenticate("wrong")
     with pytest.raises(AuthenticationError):
-        authenticate("secret-key", "not-allowed")
-    identity = authenticate("secret-key", "t1")
-    assert identity.authenticated is True
-    assert identity.roles == ("reader", "ingestor", "admin")
+        authenticate("secret-key", "t1")
 
 
 def test_authorization_helpers():
@@ -69,13 +72,52 @@ def test_token_bucket_burst_and_refill(monkeypatch):
 
 def test_api_requires_key_when_configured(client, monkeypatch):
     monkeypatch.setattr("src.api.main.settings.API_KEY", "secret-key")
+    monkeypatch.setattr("src.api.main.settings.DEV_AUTH_ENABLED", False)
     response = client.post("/query", json={"query": "hello"})
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
     allowed = client.post("/query", json={"query": "hello"}, headers={"X-API-Key": "secret-key"})
-    # Authentication passed; the request reaches the pipeline and fails closed
-    # because no model/index is configured in this unit environment.
-    assert allowed.status_code != 401
+    assert allowed.status_code == 401
+
+
+def test_development_bypass_is_fixed_tenant_reader_only(monkeypatch):
+    monkeypatch.setattr("src.security.authentication.settings.APP_ENV", "development")
+    monkeypatch.setattr("src.security.authentication.settings.DEV_AUTH_ENABLED", True)
+    monkeypatch.setattr("src.security.authentication.settings.DEV_TENANT_ID", "dev-tenant")
+    identity = authenticate(None)
+    assert identity.tenant_id == "dev-tenant"
+    assert identity.roles == ("reader",)
+    with pytest.raises(AuthorizationError):
+        authenticate(None, "attacker-tenant")
+
+
+def test_global_api_key_never_authenticates(monkeypatch):
+    monkeypatch.setattr("src.security.authentication.settings.APP_ENV", "development")
+    monkeypatch.setattr("src.security.authentication.settings.API_KEY", "legacy-secret")
+    monkeypatch.setattr("src.security.authentication.settings.DEV_AUTH_ENABLED", False)
+    with pytest.raises(AuthenticationError):
+        authenticate("legacy-secret", "victim-tenant")
+
+
+def test_http_tenant_assertion_cannot_override_credential(client):
+    registry = get_credential_registry()
+    registry.clear()
+    key, _ = registry.provision("tenant-a", "admin-a", roles=["admin"])
+    response = client.get("/documents", headers={"X-API-Key": key, "X-Tenant-ID": "tenant-b"})
+    assert response.status_code == 403
+
+
+def test_http_tenant_admin_cannot_provision_cross_tenant_credential(client):
+    registry = get_credential_registry()
+    registry.clear()
+    key, _ = registry.provision("tenant-a", "admin-a", roles=["admin"])
+    response = client.post(
+        "/admin/credentials",
+        headers={"X-API-Key": key},
+        json={"tenant_id": "tenant-b", "subject_id": "victim-admin", "roles": ["admin"]},
+    )
+    assert response.status_code == 403
+    assert registry.list_credentials("tenant-b") == []
 
 
 def test_api_rate_limit_and_correlation_id(client, monkeypatch):

@@ -141,8 +141,8 @@ EXPERIMENT_SUITE: Dict[str, ExperimentConfig] = {
     ),
     "E5": ExperimentConfig(
         experiment_id="E5",
-        name="Dense + BM25 + RRF + Cross-Encoder",
-        description="Hybrid RRF retrieval followed by cross-encoder candidate reranking",
+        name="Dense + BM25 + RRF + lexical overlap reranker",
+        description="Hybrid RRF retrieval followed by a deterministic lexical overlap baseline; not a semantic cross-encoder",
         dense=True,
         sparse=True,
         fusion_method="rrf",
@@ -213,14 +213,14 @@ def linear_score_fusion(
 #    Lost-in-the-Middle, Adaptive Retrieval & Calibrated Scorer
 # =====================================================================
 
-class CalibratedOfflineCrossEncoder:
-    """Calibrated offline cross-encoder scorer for deterministic testing and benchmarks.
+class LexicalOverlapReranker:
+    """Deterministic lexical overlap baseline; this is not a trained cross-encoder.
 
     Scores (query, passage) pairs based on token alignment, exact phrase matching,
     and BM25 token overlap to provide realistic and reproducible reranking behavior.
     """
 
-    def __init__(self, model_id: str = "calibrated-offline-cross-encoder"):
+    def __init__(self, model_id: str = "lexical-overlap-baseline"):
         self.model_id = model_id
 
     def score(self, pairs: Sequence[Tuple[str, str]]) -> List[float]:
@@ -980,7 +980,7 @@ def main():
         from src.retrieval.reranker import build_cross_encoder
         reranker = build_cross_encoder()
     except Exception:
-        reranker = CalibratedOfflineCrossEncoder()
+        reranker = LexicalOverlapReranker()
 
     runner = ExperimentRunner(
         vector_store=store,

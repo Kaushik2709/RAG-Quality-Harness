@@ -115,15 +115,15 @@ def grounded_generation_metrics(
     c_cov = claim_coverage(sup_claims, tot_claims)
     quote_validity = citation_quote_validity_rate(len(accepted), total_cit)
 
-    sem_entail = float(validation_dict.get("semantic_entailment_score", 1.0 if c_cov == 1.0 else 0.0))
-
     metrics = {
         "claim_coverage": c_cov,
         "citation_precision": c_prec,
         "citation_recall": float(validation_dict.get("citation_recall", 0.0)),
         "quote_validity_rate": quote_validity,
-        "semantic_entailment_score": sem_entail,
     }
+    sem_entail = validation_dict.get("semantic_entailment_score")
+    if sem_entail is not None:
+        metrics["semantic_entailment_score"] = float(sem_entail)
 
     if reference_answer and generated_answer:
         metrics["numerical_consistency"] = numerical_consistency(reference_answer, generated_answer)

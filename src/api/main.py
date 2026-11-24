@@ -51,7 +51,7 @@ from src.runtime.errors import (
     UnsupportedDocument,
 )
 from src.runtime.readiness import collect_readiness
-from src.security.authentication import Identity, get_credential_registry
+from src.security.authentication import Identity, ROLE_PERMISSIONS, get_credential_registry
 from src.security.authorization import require_role, require_tenant
 from src.tracing.exporter import get_exporter
 
@@ -61,7 +61,14 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.APP_ENV in {"production", "staging"}:
+        if settings.DEV_AUTH_ENABLED:
+            raise RuntimeError("DEV_AUTH_ENABLED must be false in production and staging")
+        if not get_credential_registry().list_credentials():
+            raise RuntimeError("production startup requires at least one registered credential")
     lifecycle.startup()
+    recovery = _ingestion_service().recover_and_cleanup()
+    logger.info("startup ingestion recovery completed: %s", recovery)
     try:
         yield
     finally:
@@ -211,7 +218,7 @@ def read_root():
         "reranker_model": settings.RERANKER_MODEL,
         "llm_provider": settings.LLM_PROVIDER,
         "llm_model": settings.GEMINI_MODEL if settings.LLM_PROVIDER == "gemini" else settings.CLAUDE_MODEL,
-        "authentication": "enabled" if settings.API_KEY else "disabled",
+        "authentication": "enabled" if get_credential_registry().list_credentials() or settings.DEV_AUTH_ENABLED else "disabled",
         "docs": "/docs",
     }
 
@@ -648,9 +655,17 @@ def trigger_eval_run(
 def provision_credential(req: Dict[str, Any], identity: Identity = Depends(get_identity)):
     require_role(identity, "admin")
     target_tenant = req.get("tenant_id") or identity.tenant_id
+    platform_admin = "platform_admin" in identity.roles and "platform:credentials:manage" in identity.permissions
+    if target_tenant != identity.tenant_id and not platform_admin:
+        raise HTTPException(status_code=403, detail="tenant administrators may only provision credentials for their tenant")
     subject_id = req.get("subject_id") or f"sub-{uuid.uuid4().hex[:8]}"
     roles = req.get("roles") or ["reader"]
     permissions = req.get("permissions")
+    if not isinstance(roles, (list, tuple)) or not roles or any(role not in {"reader", "ingestor", "admin"} for role in roles):
+        raise HTTPException(status_code=422, detail="invalid credential roles")
+    granted = set(permissions or [permission for role in roles for permission in ROLE_PERMISSIONS[role]])
+    if not granted.issubset(set(identity.permissions)):
+        raise HTTPException(status_code=403, detail="credential permissions exceed provisioning authority")
     expires_in_days = req.get("expires_in_days")
     description = req.get("description")
     raw_key, record = get_credential_registry().provision(

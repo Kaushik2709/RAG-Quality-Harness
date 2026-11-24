@@ -85,13 +85,14 @@ def collect_readiness(*, deep: bool = False) -> Dict[str, Any]:
         reasons.append("retrieval index invalidated")
 
     # 3. Security configuration
-    auth_disabled = not (settings.API_KEY or "").strip()
+    from src.security.authentication import get_credential_registry
+    auth_disabled = not get_credential_registry().list_credentials()
     components["authentication"] = {
         "status": "disabled" if auth_disabled else "enabled",
         "tenant_allowlist": bool(settings.TENANT_IDS),
     }
-    if auth_disabled and settings.APP_ENV == "production":
-        reasons.append("API_KEY is required when APP_ENV=production")
+    if auth_disabled and settings.APP_ENV in {"production", "staging"}:
+        reasons.append("at least one registered credential is required in production and staging")
 
     # 4. Telemetry exporter
     try:

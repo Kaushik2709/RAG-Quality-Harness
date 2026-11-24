@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Application
     # ------------------------------------------------------------------
-    APP_ENV: Literal["development", "test", "production"] = Field(default="development")
+    APP_ENV: Literal["development", "test", "staging", "production"] = Field(default="development")
     SERVICE_VERSION: str = Field(default="3.0.0")
 
     # Ingestion & Chunking
@@ -109,6 +109,8 @@ class Settings(BaseSettings):
         description="allow: include evidence; mark_untrusted: isolate and wrap in untrusted data delimiters; exclude: drop high-risk evidence; quarantine: store in quarantine registry and drop",
     )
     API_KEY: str = Field(default="", description="Static API key. Empty disables authentication (development only).")
+    DEV_AUTH_ENABLED: bool = Field(default=False, description="Explicitly enable unauthenticated development access")
+    DEV_TENANT_ID: str = Field(default="development", description="Fixed tenant used by the development bypass")
     API_KEY_HEADER: str = Field(default="X-API-Key")
     TENANT_IDS: str = Field(default="", description="Comma-separated tenant allowlist; empty allows any X-Tenant-ID")
     CORS_ALLOW_ORIGINS: str = Field(

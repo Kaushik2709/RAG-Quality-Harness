@@ -6,7 +6,7 @@ from src.evaluation.experiments import (
     EXPERIMENT_SUITE,
     AdaptiveRetriever,
     AdaptiveRetrievalRouter,
-    CalibratedOfflineCrossEncoder,
+    LexicalOverlapReranker,
     ContextCompressor,
     ExperimentConfig,
     ExperimentRunner,
@@ -180,7 +180,7 @@ def test_reranker_comparative_metrics_e5():
         Document(page_content="irrelevant distractor text", metadata={"chunk_id": "c2", "doc_id": "d2"}),
         Document(page_content="audit retention period is 30 days exactly", metadata={"chunk_id": "c1", "doc_id": "d1"}),
     ]
-    reranker = CalibratedOfflineCrossEncoder()
+    reranker = LexicalOverlapReranker()
     runner = ExperimentRunner(
         vector_store=FakeVectorStore(),
         chunks=chunks,

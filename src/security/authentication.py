@@ -42,6 +42,7 @@ ROLE_PERMISSIONS: Dict[str, Tuple[str, ...]] = {
         "traces:manage",
         "evals:run",
     ),
+    "platform_admin": ("platform:credentials:manage", "platform:tenants:manage", "system:read"),
 }
 
 
@@ -482,7 +483,7 @@ def authenticate(api_key: Optional[str], tenant_id: Optional[str] = None) -> Ide
     Fails closed in production if no valid key is provided.
     """
     supplied = (api_key or "").strip()
-    is_prod = settings.APP_ENV == "production"
+    is_prod = settings.APP_ENV in {"production", "staging"}
 
     if is_prod and not supplied:
         _registry._record_audit("auth_missing_key", details="production_fail_closed")
@@ -494,49 +495,22 @@ def authenticate(api_key: Optional[str], tenant_id: Optional[str] = None) -> Ide
         if _registry.has_key_hash(k_hash):
             return _registry.verify_key(supplied, requested_tenant=tenant_id)
 
-        # 2. Backward compatibility with static global API_KEY if configured
-        configured = (settings.API_KEY or "").strip()
-        if configured:
-            valid = hmac.compare_digest(supplied.encode("utf-8"), configured.encode("utf-8"))
-            if valid:
-                tenant = _resolve_tenant(tenant_id)
-                _registry._record_audit(
-                    "auth_success",
-                    subject_id=f"api-key:{configured[:4]}…",
-                    tenant_id=tenant,
-                    credential_id="legacy-global",
-                )
-                metrics.inc("rag_auth_success_total", {"tenant": tenant})
-                return Identity(
-                    subject_id=f"api-key:{configured[:4]}…",
-                    credential_id="legacy-global",
-                    tenant_id=tenant,
-                    roles=("reader", "ingestor", "admin"),
-                    permissions=ROLE_PERMISSIONS["admin"],
-                    authentication_method="api_key",
-                    credential_status="active",
-                    authenticated=True,
-                )
-
         _registry._record_audit("auth_invalid_key", details="key_not_recognized")
         metrics.inc("rag_auth_failures_total", {"reason": "invalid_key"})
         raise AuthenticationError("missing or invalid API key", component="authentication")
 
-    # If static API_KEY is set, non-prod also rejects unauthenticated requests
-    configured = (settings.API_KEY or "").strip()
-    if configured:
-        _registry._record_audit("auth_missing_key", details="key_configured_but_missing")
-        metrics.inc("rag_auth_failures_total", {"reason": "missing_key"})
+    if not settings.DEV_AUTH_ENABLED or is_prod:
+        _registry._record_audit("auth_missing_key", details="development_bypass_disabled")
         raise AuthenticationError("missing or invalid API key", component="authentication")
-
-    # Anonymous development mode (only when APP_ENV != production and no API_KEY configured)
-    resolved_tenant = _resolve_tenant(tenant_id)
+    resolved_tenant = settings.DEV_TENANT_ID.strip()
+    if tenant_id and tenant_id.strip() != resolved_tenant:
+        raise AuthorizationError("requested tenant does not match development tenant", component="authorization")
     return Identity(
         subject_id="anonymous",
         credential_id="none",
         tenant_id=resolved_tenant,
-        roles=("reader", "ingestor", "admin"),
-        permissions=ROLE_PERMISSIONS["admin"],
+        roles=("reader",),
+        permissions=ROLE_PERMISSIONS["reader"],
         authentication_method="disabled",
         credential_status="active",
         authenticated=False,

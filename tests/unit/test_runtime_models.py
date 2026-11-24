@@ -112,5 +112,5 @@ def test_readiness_treats_disabled_auth_as_degraded_in_production(monkeypatch):
     monkeypatch.setattr(settings, "MODEL_INIT_MODE", "degraded")
     report = collect_readiness(deep=False)
     assert report["ready"] is False
-    assert "API_KEY is required when APP_ENV=production" in report["reasons"]
+    assert "at least one registered credential is required in production and staging" in report["reasons"]
     assert report["components"]["authentication"]["status"] == "disabled"
