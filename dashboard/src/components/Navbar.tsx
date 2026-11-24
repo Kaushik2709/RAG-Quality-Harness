@@ -12,7 +12,8 @@ import {
   AlertCircle, 
   BarChart3, 
   Sparkles,
-  Database
+  Database,
+  ServerCog
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -61,6 +62,7 @@ export default function Navbar() {
     { href: '/traces', label: 'Trace Waterfall', icon: Layers },
     { href: '/evals', label: 'Eval Benchmarks', icon: Activity },
     { href: '/ingest', label: 'Ingest Studio', icon: Database },
+    { href: '/runtime', label: 'Runtime', icon: ServerCog },
   ];
 
   return (

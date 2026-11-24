@@ -1,7 +1,46 @@
-"""Unit/regression tests must never depend on credentials or network services."""
+"""Unit/regression tests must never depend on credentials or network services.
+
+Every test also starts from a clean process-local runtime: model registry,
+retrieval index, exporter worker, rate limiter, metrics and the cached default
+vector store. Without this, a failure in one test can make the next test pass
+or fail depending on execution order.
+"""
 import socket
+
 import pytest
+
 from src.config import settings
+
+
+def _reset_process_state() -> None:
+    from src.api.dependencies import reset_limiter
+    from src.observability.metrics import metrics
+    from src.retrieval.retrieval_runtime import reset_retrieval_runtime
+    from src.retrieval.vector_store import reset_default_vector_store
+    from src.runtime.lifecycle import reset_model_registry
+    from src.tracing.exporter import reset_exporter
+
+    reset_limiter()
+    reset_exporter()
+    reset_retrieval_runtime()
+    reset_model_registry()
+    reset_default_vector_store()
+    metrics.reset()
+    try:
+        # The API caches ingestion services by store identity; Python may reuse
+        # an id after GC, so clear the cache between tests.
+        from src.api import main
+
+        main._ingestion_services.clear()
+    except Exception:  # noqa: BLE001 - API import is not required for unit tests
+        pass
+
+
+@pytest.fixture(autouse=True)
+def reset_runtime_state():
+    _reset_process_state()
+    yield
+    _reset_process_state()
 
 
 @pytest.fixture(autouse=True)

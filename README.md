@@ -111,18 +111,30 @@ RAG-Quality-Harness/
 ├── eval/                         # Evaluation artifacts & benchmarks
 │   └── golden_dataset.jsonl      # Curated ground-truth Q&A evaluation pairs
 ├── infra/                        # Infrastructure & deployment configuration
-│   ├── docker-compose.yml        # Multi-container stack (API, Qdrant, DB, Web)
-│   ├── Dockerfile.api            # Container definition for FastAPI backend
+│   ├── docker-compose.yml        # Qdrant + Postgres + API stack
+│   ├── docker-compose.full.yml   # Adds Next.js dashboard service
+│   ├── Dockerfile.api            # FastAPI backend image (fail-closed healthcheck)
+│   ├── Dockerfile.dashboard      # Next.js dashboard image
 │   └── init.sql                  # PostgreSQL trace & eval database schema
 ├── tests/                        # Automated test suite
 │   └── unit/                     # Unit test modules (Pytest)
 │       ├── test_chunker.py       # Chunking & splitting tests
+│       ├── test_citations_context.py   # Citation & context validation tests
+│       ├── test_evaluation_extensions.py   # Evaluation schema v3 extensions
+│       ├── test_evaluation_reliability.py   # Regression/failure/math/API validation
 │       ├── test_guardrails.py    # Guardrail & detector unit tests
+│       ├── test_ingestion_service.py   # Ingestion versioning/rollback/deletion
+│       ├── test_index_manager.py   # Index lifecycle/concurrency tests
 │       ├── test_judge.py         # LLM judge logic tests
-│       └── test_metrics.py       # IR retrieval metrics math tests
+│       ├── test_metrics.py       # IR retrieval metrics math tests
+│       ├── test_metrics_exporter.py   # Trace exporter tests
+│       ├── test_pipeline_graph.py   # Pipeline graph tests
+│       ├── test_runtime_models.py   # Model lifecycle/readiness tests
+│       └── test_security_api.py   # Security/API tests
 ├── .env.example                  # Template for required environment variables
 ├── pytest.ini                    # Pytest configuration
 ├── requirements.txt              # Production & development Python dependencies
+├── requirements-offline.txt      # Pinned offline dependencies (Python 3.14)
 └── README.md                     # Project documentation
 ```
 
@@ -193,3 +205,36 @@ Retrieval evaluation creates a fresh isolated in-memory store and indexes every 
 Offline CI executes unit tests and three retrieval configurations on 28 explicitly synthetic queries over 16 fixture documents. The inherited 10-query sample is preserved with unverified annotation provenance. Missing judge credentials produce an unavailable status and CLI exit 2; skipped scores stay absent rather than being presented as zero or invented dashboard numbers. Reports contain SHA-256 fingerprints, configuration, installed versions, per-query errors/misses and p50/p95 stage timings. Baselines are created only with `--accept-baseline` and compared only with explicit `--baseline`.
 
 Runtime defaults: Google `models/gemini-embedding-001`, Gemini `gemini-2.5-flash`, local fallback `BAAI/bge-small-en-v1.5`, reranker `BAAI/bge-reranker-base`. These are configured model identifiers, not assertions about provider availability. Cloud/local results and exact billing measurements have not been verified in this repair. See the methodology for supported resume statements and known limitations.
+
+## CI/CD workflows
+
+Normal CI is deterministic and offline (no paid LLM APIs, no network, no credentials). Separate opt-in workflows handle live evaluation and performance:
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `.github/workflows/ci.yml` | push / PR | Offline unit tests, compileall, pip check |
+| `.github/workflows/retrieval.yml` | push / PR | Dense / BM25 / hybrid / diagnostic regression gates |
+| `.github/workflows/security.yml` | push / PR | Security/API test suite; rejects live credentials in tests |
+| `.github/workflows/frontend.yml` | push / PR (dashboard paths) | `npm ci`, `tsc --noEmit`, `npm run build` |
+| `.github/workflows/performance.yml` | schedule / dispatch | Retrieval benchmarks at concurrency 1/5/10 (10k chunks) |
+| `.github/workflows/live-evaluation.yml` | manual dispatch | Opt-in live embeddings/generation/judge (requires `GEMINI_API_KEY` secret) |
+
+A missing baseline, missing credentials, failed benchmark, or unavailable model must not be reported as a successful evaluation.
+
+## Dashboard pages
+
+| Page | Path | Data source |
+|---|---|---|
+| Overview | `/` | `/ready`, `/runtime/status`, `/traces`, `/evals/reports` |
+| Trace Waterfall | `/traces` | `/traces`, `/traces/{query_id}` |
+| Eval Benchmarks | `/evals` | `/evals/reports` + CLI command snippet |
+| Ingest Studio | `/ingest` | `/ingest`, `/runtime/status` |
+| Runtime & Index | `/runtime` | `/ready`, `/runtime/status`, `/documents`, `/index/refresh` |
+| RAG Playground | `/playground` | `/query` |
+
+Every dashboard value originates from persisted telemetry or evaluation data; unavailable values are shown as unavailable, never as zero or success.
+
+## Docker
+
+The API image carries a fail-closed `/ready` healthcheck. `LLM_PROVIDER` defaults to `gemini` (never `mock`). Use `docker-compose.yml` for the API stack (Qdrant + Postgres + API) or `docker-compose.full.yml` to also run the Next.js dashboard. Set `LLM_PROVIDER`, `GEMINI_API_KEY`, `MODEL_INIT_MODE`, `RERANK_POLICY`, `STORE_BACKEND`, and `APP_ENV` via environment; an `.env` is not committed.
+

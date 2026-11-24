@@ -10,8 +10,11 @@ from pathlib import Path
 from time import perf_counter
 
 from src.config import settings
+from src.evaluation.answer_metrics import answer_metrics, mean_answer_metrics
+from src.evaluation.datasets import dataset_manifest, filter_split, normalize_category, validate_dataset
 from src.evaluation.golden_dataset import load_golden_dataset
 from src.evaluation.retrieval_metrics import compute_all_retrieval_metrics
+from src.evaluation.statistical_tests import bootstrap_ci
 from src.ingestion.loaders import load_document
 from src.ingestion.chunker import chunk_documents
 from src.retrieval.vector_store import get_vector_store
@@ -67,35 +70,43 @@ def versions():
 
 
 def run_evaluation(dataset_path=None, *, corpus_dir=None, mode="hybrid", backend="offline",
-                   judge=False, output_dir=None, candidate_k=10, k=5):
+                   judge=False, output_dir=None, candidate_k=10, k=5, split=None,
+                   bootstrap=True, bootstrap_samples=None):
     if mode not in MODES or backend not in {"offline", "google", "local"}:
         raise ValueError("Unknown evaluation configuration")
     if k <= 0 or candidate_k < k:
         raise ValueError("Require candidate_k >= k > 0")
     dataset_path = Path(dataset_path or ROOT / "eval/golden_dataset.jsonl")
     corpus_dir = Path(corpus_dir or ROOT / "data/sample_docs")
-    triples = load_golden_dataset(str(dataset_path))
+    all_triples = load_golden_dataset(str(dataset_path))
+    triples = filter_split(all_triples, split)
     start = perf_counter()
     chunks, doc_count, corpus_hash = load_corpus(corpus_dir)
     known_ids = {d.metadata["doc_id"] for d in chunks}
-    unknown = {i for t in triples for i in t.expected_relevant_doc_ids} - known_ids
-    if unknown:
-        raise ValueError(f"Unknown relevance IDs: {sorted(unknown)}")
+    validate_dataset(triples, known_ids)
+    manifest = dataset_manifest(triples, dataset_path=str(dataset_path), corpus_sha256=corpus_hash)
     report = {
-        "schema_version": 2, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "schema_version": 3, "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "status": "completed", "total_queries": len(triples),
         "dataset": {"path": str(dataset_path), "sha256": hashlib.sha256(dataset_path.read_bytes()).hexdigest(),
                     "corpus_sha256": corpus_hash, "documents": doc_count, "chunks": len(chunks),
+                    "split": split or "all",
                     "label_provenance": "See eval/METHODOLOGY.md; labels are not asserted manually verified"},
+        "manifest": manifest,
         "config": {"mode": mode, "backend": backend, "candidate_k": candidate_k, "k": k,
+                   "split": split or "all",
                    "chunk_size": settings.CHUNK_SIZE, "chunk_overlap": settings.CHUNK_OVERLAP,
-                   "chunk_strategy": settings.CHUNKER_STRATEGY, "fusion_weights": [.6, .4], "rrf_constant": 60,
+                   "chunk_strategy": settings.CHUNKER_STRATEGY,
+                   "fusion_weights": [settings.FUSION_DENSE_WEIGHT, settings.FUSION_SPARSE_WEIGHT],
+                   "rrf_constant": settings.FUSION_RRF_K,
                    "embedding_model": {"offline": "sha256-lexical-512-v1", "google": settings.EMBEDDING_MODEL,
                                        "local": "BAAI/bge-small-en-v1.5"}[backend],
                    "reranker_model": settings.RERANKER_MODEL if mode == "hybrid-rerank" else None},
         "versions": versions(), "judge_status": "skipped" if not judge else "pending",
         "usage": {"tokens": None, "cost_usd": None, "status": "not measured"},
-        "metrics": {}, "details": [], "latency_ms": {},
+        "metrics": {}, "confidence_intervals": {}, "category_metrics": {},
+        "unanswerable": {"queries": 0, "retrieval_returned_documents": 0},
+        "details": [], "latency_ms": {},
     }
     latencies = {"retrieve": [], "rerank": [], "generate": [], "judge": [], "query_total": []}
     try:
@@ -131,15 +142,23 @@ def run_evaluation(dataset_path=None, *, corpus_dir=None, mode="hybrid", backend
                 report["judge_error"] = "Missing generation/judge credentials"
             else:
                 from src.generation.generator import get_chat_model
-                from src.evaluation.judge import LLMJudge
+                from src.evaluation.judge import JUDGE_PROMPT_VERSION, LLMJudge
+                judge_model = settings.GEMINI_MODEL if settings.LLM_PROVIDER == "gemini" else settings.CLAUDE_MODEL
                 chat = get_chat_model()
-                judge_engine = LLMJudge(chat_model=chat)
+                judge_engine = LLMJudge(chat_model=chat, model_id=judge_model)
                 report["judge_status"] = "completed"
-                report["config"]["judge_model"] = settings.GEMINI_MODEL if settings.LLM_PROVIDER == "gemini" else settings.CLAUDE_MODEL
+                report["config"]["judge_model"] = judge_model
+                report["config"]["judge_prompt_version"] = JUDGE_PROMPT_VERSION
         report["latency_ms"]["setup"] = (perf_counter()-start)*1000
         for triple in triples:
-            row = {"query_id": triple.query_id, "query": triple.query, "expected_docs": triple.expected_relevant_doc_ids,
-                   "retrieved_docs": [], "retrieved_chunks": [], "status": "completed", "latency_ms": {}}
+            row = {
+                "query_id": triple.query_id, "query": triple.query,
+                "expected_docs": triple.expected_relevant_doc_ids,
+                "answerable": triple.answerable,
+                "category": normalize_category(triple.metadata.get("category")),
+                "split": triple.metadata.get("split", "unspecified"),
+                "retrieved_docs": [], "retrieved_chunks": [], "status": "completed", "latency_ms": {},
+            }
             query_start = perf_counter()
             try:
                 stage_start = perf_counter()
@@ -153,16 +172,29 @@ def run_evaluation(dataset_path=None, *, corpus_dir=None, mode="hybrid", backend
                 row["retrieved_chunks"] = [d.metadata["chunk_id"] for d in docs]
                 # Document-level judgments: collapse repeated chunks before assigning ranks.
                 row["retrieved_docs"] = list(dict.fromkeys(d.metadata["doc_id"] for d in docs))
-                row["metrics"] = compute_all_retrieval_metrics(row["retrieved_docs"][:k], triple.expected_relevant_doc_ids, k)
-                row["missed_docs"] = sorted(set(triple.expected_relevant_doc_ids)-set(row["retrieved_docs"][:k]))
+                if triple.answerable:
+                    row["metrics"] = compute_all_retrieval_metrics(
+                        row["retrieved_docs"][:k], triple.expected_relevant_doc_ids, k
+                    )
+                    row["missed_docs"] = sorted(
+                        set(triple.expected_relevant_doc_ids) - set(row["retrieved_docs"][:k])
+                    )
+                else:
+                    # Retrieval metrics are undefined without relevant labels.
+                    # Record what the retriever returned, without calling it an error.
+                    row["metrics"] = {}
+                    row["retrieved_document_count"] = len(row["retrieved_docs"])
                 if judge_engine:
                     from src.generation.prompt_builder import build_chat_prompt_template
                     context = "\n\n".join(d.page_content for d in docs[:k])
                     stage_start = perf_counter()
                     answer = (build_chat_prompt_template() | chat).invoke({"query": triple.query, "context": context})
                     row["latency_ms"]["generate"] = (perf_counter()-stage_start)*1000
+                    generated = answer.content if isinstance(answer.content, str) else str(answer.content)
+                    if triple.answerable:
+                        row["answer_metrics"] = answer_metrics(triple.reference_answer, generated)
                     stage_start = perf_counter()
-                    result = judge_engine.evaluate(triple.query, context, str(answer.content))
+                    result = judge_engine.evaluate(triple.query, context, generated)
                     row["latency_ms"]["judge"] = (perf_counter()-stage_start)*1000
                     row["judge_score"] = result.model_dump()
                     row["provider_usage"] = {"generation": getattr(answer, "usage_metadata", None),
@@ -171,18 +203,72 @@ def run_evaluation(dataset_path=None, *, corpus_dir=None, mode="hybrid", backend
                 row.update(status="error", error=f"{type(exc).__name__}: {exc}")
                 report["status"] = "failed"
                 # Failures stay in the denominator; no survivorship-biased averages.
-                row.setdefault("metrics", compute_all_retrieval_metrics([], triple.expected_relevant_doc_ids, k))
+                if triple.answerable:
+                    row.setdefault("metrics", compute_all_retrieval_metrics([], triple.expected_relevant_doc_ids, k))
+                else:
+                    row.setdefault("metrics", {})
                 if judge_engine:
                     report["judge_status"] = "failed"
             row["latency_ms"]["query_total"] = (perf_counter()-query_start)*1000
             for stage, elapsed in row["latency_ms"].items():
                 latencies.setdefault(stage, []).append(elapsed)
             report["details"].append(row)
-        keys = compute_all_retrieval_metrics([], [], k)
-        report["metrics"] = {name: sum(row["metrics"][name] for row in report["details"])/len(triples) for name in keys}
-        if report["judge_status"] == "completed":
-            for name in ("faithfulness", "answer_relevancy", "context_precision"):
-                report["metrics"]["mean_"+name] = sum(row["judge_score"][name] for row in report["details"])/len(triples)
+
+        answerable_rows = [row for row in report["details"] if row["answerable"]]
+        if answerable_rows:
+            keys = compute_all_retrieval_metrics([], [], k)
+            report["metrics"] = {
+                name: sum(row["metrics"][name] for row in answerable_rows) / len(answerable_rows)
+                for name in keys
+            }
+            if bootstrap and len(answerable_rows) > 1 and report["status"] == "completed":
+                samples = bootstrap_samples or settings.EVAL_BOOTSTRAP_SAMPLES
+                report["confidence_intervals"] = {
+                    name: bootstrap_ci(
+                        [row["metrics"][name] for row in answerable_rows],
+                        samples=samples,
+                        seed=settings.EVAL_BOOTSTRAP_SEED,
+                    )
+                    for name in keys
+                }
+            categories = sorted({row["category"] for row in answerable_rows})
+            for category in categories:
+                rows = [row for row in answerable_rows if row["category"] == category]
+                report["category_metrics"][category] = {
+                    "queries": len(rows),
+                    f"recall_at_{k}": sum(row["metrics"][f"recall_at_{k}"] for row in rows) / len(rows),
+                    "mrr": sum(row["metrics"]["mrr"] for row in rows) / len(rows),
+                    f"ndcg_at_{k}": sum(row["metrics"][f"ndcg_at_{k}"] for row in rows) / len(rows),
+                }
+            judged = [row for row in answerable_rows if "judge_score" in row]
+            if report["judge_status"] == "completed" and judged:
+                for name in ("faithfulness", "answer_relevancy", "context_precision"):
+                    report["metrics"]["mean_" + name] = sum(row["judge_score"][name] for row in judged) / len(judged)
+            answered = [row["answer_metrics"] for row in answerable_rows if "answer_metrics" in row]
+            if answered:
+                report["metrics"].update(mean_answer_metrics(answered))
+                report["answer_metrics"] = {
+                    "queries": len(answered),
+                    "method": "deterministic lexical overlap; not semantic correctness",
+                }
+        unanswerable = [row for row in report["details"] if not row["answerable"]]
+        if unanswerable:
+            returned = sum(1 for row in unanswerable if row.get("retrieved_document_count", 0) > 0)
+            report["unanswerable"] = {
+                "queries": len(unanswerable),
+                "retrieval_returned_documents": returned,
+                "retrieval_returned_rate": returned / len(unanswerable),
+                "retrieval_metrics": "not applicable; no relevant labels",
+            }
+        from src.evaluation.judge import JUDGE_PROMPT_VERSION
+
+        report["judge"] = {
+            "status": report["judge_status"],
+            "prompt_version": JUDGE_PROMPT_VERSION,
+            "model": report["config"].get("judge_model"),
+            "scores_are_model_generated": report["judge_status"] == "completed",
+            "human_calibration": "not available unless human labels are supplied",
+        }
     except Exception as exc:
         report.update(status="unavailable", error=f"{type(exc).__name__}: {exc}")
         if report["judge_status"] == "pending":
@@ -208,20 +294,49 @@ def comparison_identity(report):
             "versions": report.get("versions")}
 
 
-def compare_with_baseline(current_metrics, baseline_path="eval/baseline_metrics.json"):
+def compare_with_baseline_details(current_metrics, baseline_path="eval/baseline_metrics.json"):
     path = Path(baseline_path)
     if not path.exists():
-        return False
+        return {"passed": False, "reason": "baseline_missing", "baseline": str(path)}
     baseline = json.loads(path.read_text(encoding="utf-8"))
     if current_metrics.get("status") != "completed" or baseline.get("status") != "completed":
-        return False
+        return {"passed": False, "reason": "run_not_completed"}
     if comparison_identity(current_metrics) != comparison_identity(baseline):
-        print("Incompatible baseline: corpus, dataset, dependencies or configuration changed")
-        return False
+        return {
+            "passed": False,
+            "reason": "incompatible_identity",
+            "detail": "corpus, dataset, dependencies or configuration changed",
+        }
     required = ("recall_at_5", "mrr", "ndcg_at_5")
-    return all(name in current_metrics["metrics"] and name in baseline["metrics"]
-               and current_metrics["metrics"][name] >= baseline["metrics"][name]-settings.MAX_RECALL_DROP_TOLERANCE
-               for name in required) and current_metrics["metrics"]["recall_at_5"] >= settings.MIN_RECALL_THRESHOLD
+    checks = {}
+    for name in required:
+        current = current_metrics["metrics"].get(name)
+        previous = baseline["metrics"].get(name)
+        checks[name] = {
+            "current": current,
+            "baseline": previous,
+            "max_allowed_drop": settings.MAX_RECALL_DROP_TOLERANCE,
+            "passed": current is not None and previous is not None
+            and current >= previous - settings.MAX_RECALL_DROP_TOLERANCE,
+        }
+    floor = {
+        "recall_at_5": current_metrics["metrics"].get("recall_at_5"),
+        "minimum": settings.MIN_RECALL_THRESHOLD,
+        "passed": current_metrics["metrics"].get("recall_at_5", 0) >= settings.MIN_RECALL_THRESHOLD,
+    }
+    return {
+        "passed": all(item["passed"] for item in checks.values()) and floor["passed"],
+        "reason": "ok" if all(item["passed"] for item in checks.values()) and floor["passed"] else "quality_gate_failed",
+        "metrics": checks,
+        "recall_floor": floor,
+    }
+
+
+def compare_with_baseline(current_metrics, baseline_path="eval/baseline_metrics.json"):
+    details = compare_with_baseline_details(current_metrics, baseline_path)
+    if details.get("reason") == "incompatible_identity":
+        print("Incompatible baseline: corpus, dataset, dependencies or configuration changed")
+    return bool(details["passed"])
 
 
 def main():
@@ -235,9 +350,21 @@ def main():
     parser.add_argument("--baseline")
     parser.add_argument("--accept-baseline", action="store_true")
     parser.add_argument("--min-recall", type=float, default=settings.MIN_RECALL_THRESHOLD)
+    parser.add_argument("--split", choices=("all", "dev", "test", "unspecified"), default="all")
+    parser.add_argument("--bootstrap-samples", type=int, default=settings.EVAL_BOOTSTRAP_SAMPLES)
+    parser.add_argument("--no-bootstrap", action="store_true")
     args = parser.parse_args()
-    result = run_evaluation(args.dataset, corpus_dir=args.corpus, mode=args.mode, backend=args.backend,
-                            judge=args.judge, output_dir=args.output_dir)
+    result = run_evaluation(
+        args.dataset,
+        corpus_dir=args.corpus,
+        mode=args.mode,
+        backend=args.backend,
+        judge=args.judge,
+        output_dir=args.output_dir,
+        split=args.split,
+        bootstrap=not args.no_bootstrap,
+        bootstrap_samples=args.bootstrap_samples,
+    )
     if result["status"] != "completed" or (args.judge and result["judge_status"] != "completed"):
         raise SystemExit(2)
     if result["metrics"]["recall_at_5"] < args.min_recall:

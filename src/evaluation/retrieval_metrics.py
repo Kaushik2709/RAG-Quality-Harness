@@ -36,8 +36,35 @@ def ndcg_at_k(retrieved_ids, expected_ids, k=5):
     return dcg / ideal if ideal else 0.0
 
 
+def average_precision_at_k(retrieved_ids, expected_ids, k=5):
+    """AP@K averaged over queries by the caller to obtain MAP@K."""
+    expected = _relevant(expected_ids)
+    if not expected or k <= 0:
+        return 0.0
+    hits = 0
+    precision_sum = 0.0
+    for rank, gain in enumerate(_gains(retrieved_ids[:k], expected), 1):
+        if gain:
+            hits += 1
+            precision_sum += hits / rank
+    return precision_sum / min(len(expected), k)
+
+
+def hit_rate_at_k(retrieved_ids, expected_ids, k=5):
+    if k <= 0 or not _relevant(expected_ids):
+        return 0.0
+    return 1.0 if any(_gains(retrieved_ids[:k], expected_ids)) else 0.0
+
+
+def retrieval_empty(retrieved_ids):
+    return 1.0 if not [item for item in (retrieved_ids or []) if isinstance(item, str) and item.strip()] else 0.0
+
+
 def compute_all_retrieval_metrics(retrieved_ids, expected_ids, k=5):
     return {f"recall_at_{k}": recall_at_k(retrieved_ids, expected_ids, k),
             f"precision_at_{k}": precision_at_k(retrieved_ids, expected_ids, k),
             "mrr": mrr(retrieved_ids, expected_ids),
-            f"ndcg_at_{k}": ndcg_at_k(retrieved_ids, expected_ids, k)}
+            f"ndcg_at_{k}": ndcg_at_k(retrieved_ids, expected_ids, k),
+            f"map_at_{k}": average_precision_at_k(retrieved_ids, expected_ids, k),
+            f"hit_rate_at_{k}": hit_rate_at_k(retrieved_ids, expected_ids, k),
+            "retrieval_empty": retrieval_empty(retrieved_ids)}

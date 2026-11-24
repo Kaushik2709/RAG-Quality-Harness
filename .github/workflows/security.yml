@@ -1,0 +1,37 @@
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      HF_HUB_OFFLINE: '1'
+      GEMINI_API_KEY: ''
+      GOOGLE_API_KEY: ''
+      CLAUDE_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: pip install -r requirements-offline.txt
+      - name: Run security/API test suite (offline boundary, fail-closed)
+        run: python -m pytest -q tests/unit/test_security_api.py tests/unit/test_ingestion_service.py tests/unit/test_chunker.py tests/unit/test_metrics.py tests/unit/test_metrics_exporter.py tests/unit/test_guardrails.py tests/unit/test_judge.py tests/unit/test_evaluation_reliability.py tests/unit/test_pipeline_graph.py tests/unit/test_index_manager.py tests/unit/test_citations_context.py tests/unit/test_evaluation_extensions.py tests/unit/test_runtime_models.py
+      - name: Verify no live credentials accepted in tests
+        run: |
+          python - <<'PY'
+          import re, pathlib
+          for path in pathlib.Path('tests').rglob('*.py'):
+              text = path.read_text()
+              for token in re.findall(r'(AIza|sk-|GOOGLE_API_KEY|GEMINI_API_KEY|CLAUDE_API_KEY)\s*=\s*["\'][^"\']+["\']', text):
+                  raise SystemExit(f"Potential live credential in {path}: {token}")
+          print("No live credentials found in tests.")
+          PY

@@ -1,21 +1,52 @@
 {
-  "schema_version": 2,
-  "timestamp": "2026-10-11T07:29:27.058578+00:00",
+  "schema_version": 3,
+  "timestamp": "2026-11-24T08:11:01.109279+00:00",
   "status": "completed",
   "total_queries": 28,
   "dataset": {
-    "path": "eval\\fixtures\\queries.jsonl",
+    "path": "eval/fixtures/queries.jsonl",
     "sha256": "189d13f021eefac7d5bf6cd029ff1a0babc30e08923095c4988288f086c08435",
     "corpus_sha256": "cd6418753e99d45f734bb3c22ff006a67e83e627d7b9897dcab1c0bbbe2b191a",
     "documents": 16,
     "chunks": 16,
+    "split": "all",
     "label_provenance": "See eval/METHODOLOGY.md; labels are not asserted manually verified"
+  },
+  "manifest": {
+    "dataset_path": "eval/fixtures/queries.jsonl",
+    "query_hash": "3e5ba2f56ab326923ecf245cb20ba2bd2953d7657010905f8b7cc8e3f483f576",
+    "corpus_sha256": "cd6418753e99d45f734bb3c22ff006a67e83e627d7b9897dcab1c0bbbe2b191a",
+    "total_queries": 28,
+    "answerable_queries": 28,
+    "unanswerable_queries": 0,
+    "categories": {
+      "direct": 12,
+      "multiple-relevant": 4,
+      "near_neighbor": 12
+    },
+    "category_coverage": [
+      "direct",
+      "multiple-relevant",
+      "near_neighbor"
+    ],
+    "category_coverage_complete": false,
+    "splits": {
+      "unspecified": 28
+    },
+    "annotation_status": {
+      "unverified": 28
+    },
+    "human_verified": false,
+    "label_provenance": [
+      "agent-authored synthetic policy fixture; not human ground truth"
+    ]
   },
   "config": {
     "mode": "hybrid",
     "backend": "offline",
     "candidate_k": 10,
     "k": 5,
+    "split": "all",
     "chunk_size": 500,
     "chunk_overlap": 50,
     "chunk_strategy": "recursive",
@@ -28,7 +59,7 @@
     "reranker_model": null
   },
   "versions": {
-    "python": "3.14.3",
+    "python": "3.14.4",
     "PyYAML": "6.0.3",
     "Pygments": "2.21.0",
     "annotated-doc": "0.0.5",
@@ -61,7 +92,7 @@
     "orjson": "3.13.0",
     "ormsgpack": "1.12.2",
     "packaging": "26.3",
-    "pip": "25.3",
+    "pip": "25.1.1",
     "pluggy": "1.6.0",
     "pydantic": "2.13.4",
     "pydantic-settings": "2.14.2",
@@ -94,7 +125,99 @@
     "recall_at_5": 1.0,
     "precision_at_5": 0.2285714285714286,
     "mrr": 0.9821428571428571,
-    "ndcg_at_5": 0.9839518050971302
+    "ndcg_at_5": 0.9839518050971302,
+    "map_at_5": 0.9761904761904762,
+    "hit_rate_at_5": 1.0,
+    "retrieval_empty": 0.0
+  },
+  "confidence_intervals": {
+    "recall_at_5": {
+      "mean": 1.0,
+      "lower": 1.0,
+      "upper": 1.0,
+      "std_error": 0.0,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    },
+    "precision_at_5": {
+      "mean": 0.228571,
+      "lower": 0.207143,
+      "upper": 0.257143,
+      "std_error": 0.013066,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    },
+    "mrr": {
+      "mean": 0.982143,
+      "lower": 0.946429,
+      "upper": 1.0,
+      "std_error": 0.017636,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    },
+    "ndcg_at_5": {
+      "mean": 0.983952,
+      "lower": 0.954723,
+      "upper": 1.0,
+      "std_error": 0.013254,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    },
+    "map_at_5": {
+      "mean": 0.97619,
+      "lower": 0.934524,
+      "upper": 1.0,
+      "std_error": 0.018451,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    },
+    "hit_rate_at_5": {
+      "mean": 1.0,
+      "lower": 1.0,
+      "upper": 1.0,
+      "std_error": 0.0,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    },
+    "retrieval_empty": {
+      "mean": 0.0,
+      "lower": 0.0,
+      "upper": 0.0,
+      "std_error": 0.0,
+      "samples": 2000,
+      "confidence": 0.95,
+      "n": 28
+    }
+  },
+  "category_metrics": {
+    "direct": {
+      "queries": 12,
+      "recall_at_5": 1.0,
+      "mrr": 0.9583333333333334,
+      "ndcg_at_5": 0.9692441461309548
+    },
+    "multiple-relevant": {
+      "queries": 4,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 0.9799301972870469
+    },
+    "near_neighbor": {
+      "queries": 12,
+      "recall_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 1.0
+    }
+  },
+  "unanswerable": {
+    "queries": 0,
+    "retrieval_returned_documents": 0
   },
   "details": [
     {
@@ -103,6 +226,9 @@
       "expected_docs": [
         "orion-retention.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "orion-retention.txt",
         "orion-export.txt",
@@ -129,17 +255,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 11.439199966844171,
-        "dense": 0.6110999966040254,
-        "bm25": 0.10730000212788582,
-        "fusion": 0.014699995517730713,
-        "query_total": 11.472699989099056
+        "retrieve": 6.442167999921367,
+        "dense": 0.6344360008370131,
+        "bm25": 0.13931099965702742,
+        "fusion": 0.018443999579176307,
+        "query_total": 6.488411003374495
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -149,6 +278,9 @@
       "expected_docs": [
         "orion-retention.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "orion-retention.txt",
         "lyra-retention.txt",
@@ -175,17 +307,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.5533000221475959,
-        "dense": 0.38570002652704716,
-        "bm25": 0.09370001498609781,
-        "fusion": 0.011500029359012842,
-        "query_total": 0.577600032556802
+        "retrieve": 0.688867992721498,
+        "dense": 0.4600460088113323,
+        "bm25": 0.14346301031764597,
+        "fusion": 0.018493999959900975,
+        "query_total": 0.726362006389536
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -195,6 +330,9 @@
       "expected_docs": [
         "orion-export.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "orion-export.txt",
         "orion-retention.txt",
@@ -221,17 +359,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.45950000640004873,
-        "dense": 0.3515999997034669,
-        "bm25": 0.057999975979328156,
-        "fusion": 0.008700008038431406,
-        "query_total": 0.4790000384673476
+        "retrieve": 0.5659140006173402,
+        "dense": 0.4179480019956827,
+        "bm25": 0.08948300092015415,
+        "fusion": 0.012050004443153739,
+        "query_total": 0.5952520004939288
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -241,6 +382,9 @@
       "expected_docs": [
         "orion-export.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "orion-export.txt",
         "orion-retention.txt",
@@ -267,17 +411,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.47660002019256353,
-        "dense": 0.3367000026628375,
-        "bm25": 0.09059999138116837,
-        "fusion": 0.010400020983070135,
-        "query_total": 0.4947000415995717
+        "retrieve": 0.6055319972801954,
+        "dense": 0.41017000330612063,
+        "bm25": 0.1389090029988438,
+        "fusion": 0.015784986317157745,
+        "query_total": 0.6328519957605749
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -287,6 +434,9 @@
       "expected_docs": [
         "lyra-retention.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "lyra-retention.txt",
         "orion-retention.txt",
@@ -313,17 +463,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.443600001744926,
-        "dense": 0.3405000315979123,
-        "bm25": 0.060699996538460255,
-        "fusion": 0.008800008799880743,
-        "query_total": 0.4621000261977315
+        "retrieve": 0.5556399992201477,
+        "dense": 0.4111840098630637,
+        "bm25": 0.09360699914395809,
+        "fusion": 0.012514006812125444,
+        "query_total": 0.58348300808575
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -333,6 +486,9 @@
       "expected_docs": [
         "lyra-retention.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "lyra-retention.txt",
         "orion-retention.txt",
@@ -359,17 +515,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4612999618984759,
-        "dense": 0.3309999592602253,
-        "bm25": 0.08570001227781177,
-        "fusion": 0.009800016414374113,
-        "query_total": 0.4783999756909907
+        "retrieve": 0.5972440121695399,
+        "dense": 0.41267699270974845,
+        "bm25": 0.133655994432047,
+        "fusion": 0.013905999367125332,
+        "query_total": 0.6234559987206012
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -379,6 +538,9 @@
       "expected_docs": [
         "lyra-export.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "lyra-export.txt",
         "orion-export.txt",
@@ -405,17 +567,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.6531999679282308,
-        "dense": 0.526399991940707,
-        "bm25": 0.08379999781027436,
-        "fusion": 0.010000017937272787,
-        "query_total": 0.674600014463067
+        "retrieve": 0.5324270023265854,
+        "dense": 0.398205011151731,
+        "bm25": 0.08296399028040469,
+        "fusion": 0.01249898923560977,
+        "query_total": 0.5585120088653639
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -425,6 +590,9 @@
       "expected_docs": [
         "lyra-export.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "lyra-export.txt",
         "orion-export.txt",
@@ -451,17 +619,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4917000187560916,
-        "dense": 0.34610001603141427,
-        "bm25": 0.089899986051023,
-        "fusion": 0.010199961252510548,
-        "query_total": 0.5098000401630998
+        "retrieve": 0.5861809913767502,
+        "dense": 0.40084200736600906,
+        "bm25": 0.1367799995932728,
+        "fusion": 0.013568002032116055,
+        "query_total": 0.6144219951238483
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -471,6 +642,9 @@
       "expected_docs": [
         "atlas-timeout.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "atlas-timeout.txt",
         "atlas-auth.txt",
@@ -497,17 +671,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4288000054657459,
-        "dense": 0.3301000106148422,
-        "bm25": 0.05400000372901559,
-        "fusion": 0.009200011845678091,
-        "query_total": 0.44600002001971006
+        "retrieve": 0.5448820011224598,
+        "dense": 0.4100430087419227,
+        "bm25": 0.08586200419813395,
+        "fusion": 0.01352099934592843,
+        "query_total": 0.5709590041078627
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -517,6 +694,9 @@
       "expected_docs": [
         "atlas-timeout.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "atlas-timeout.txt",
         "nova-timeout.txt",
@@ -543,17 +723,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4601999535225332,
-        "dense": 0.3296000068075955,
-        "bm25": 0.08620001608505845,
-        "fusion": 0.01309998333454132,
-        "query_total": 0.47669996274635196
+        "retrieve": 0.5964720039628446,
+        "dense": 0.4126800049562007,
+        "bm25": 0.1352949911961332,
+        "fusion": 0.01361500471830368,
+        "query_total": 0.6214269960764796
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -563,6 +746,9 @@
       "expected_docs": [
         "atlas-auth.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "atlas-auth.txt",
         "nova-auth.txt",
@@ -589,17 +775,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.41580002289265394,
-        "dense": 0.33199996687471867,
-        "bm25": 0.046900007873773575,
-        "fusion": 0.008000002708286047,
-        "query_total": 0.43319998076185584
+        "retrieve": 0.5190509982639924,
+        "dense": 0.40401300066150725,
+        "bm25": 0.07113099854905158,
+        "fusion": 0.010429008398205042,
+        "query_total": 0.5441099929157645
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -609,6 +798,9 @@
       "expected_docs": [
         "atlas-auth.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "atlas-auth.txt",
         "distractor-database.txt",
@@ -635,17 +827,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4475000314414501,
-        "dense": 0.3276999923400581,
-        "bm25": 0.07949996506795287,
-        "fusion": 0.009200011845678091,
-        "query_total": 0.4640999832190573
+        "retrieve": 0.5886610015295446,
+        "dense": 0.4111640009796247,
+        "bm25": 0.12672699813265353,
+        "fusion": 0.015393001376651227,
+        "query_total": 0.6144159997347742
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -655,6 +850,9 @@
       "expected_docs": [
         "nova-timeout.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "nova-timeout.txt",
         "nova-auth.txt",
@@ -681,17 +879,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4160000244155526,
-        "dense": 0.3273999900557101,
-        "bm25": 0.052099989261478186,
-        "fusion": 0.008400005754083395,
-        "query_total": 0.43180002830922604
+        "retrieve": 0.526534000528045,
+        "dense": 0.39465501322411,
+        "bm25": 0.08535399683751166,
+        "fusion": 0.012274991604499519,
+        "query_total": 0.5516329983947799
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -701,6 +902,9 @@
       "expected_docs": [
         "nova-timeout.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "nova-timeout.txt",
         "atlas-timeout.txt",
@@ -727,17 +931,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4447000101208687,
-        "dense": 0.32240001019090414,
-        "bm25": 0.08460000390186906,
-        "fusion": 0.009800016414374113,
-        "query_total": 0.4610000178217888
+        "retrieve": 0.5869019951205701,
+        "dense": 0.4040259955218062,
+        "bm25": 0.13581399980466813,
+        "fusion": 0.01340000017080456,
+        "query_total": 0.6125020008767024
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -747,6 +954,9 @@
       "expected_docs": [
         "nova-auth.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "nova-auth.txt",
         "atlas-auth.txt",
@@ -773,17 +983,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.42729999404400587,
-        "dense": 0.3421000437811017,
-        "bm25": 0.048399961087852716,
-        "fusion": 0.007399998139590025,
-        "query_total": 0.444200006313622
+        "retrieve": 0.5362999945646152,
+        "dense": 0.4174130008323118,
+        "bm25": 0.07324900070670992,
+        "fusion": 0.01077500928658992,
+        "query_total": 0.5616180133074522
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -793,6 +1006,9 @@
       "expected_docs": [
         "nova-auth.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "nova-auth.txt",
         "distractor-database.txt",
@@ -819,17 +1035,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4686999600380659,
-        "dense": 0.35009998828172684,
-        "bm25": 0.07950002327561378,
-        "fusion": 0.009300012607127428,
-        "query_total": 0.4854999715462327
+        "retrieve": 0.5782029911642894,
+        "dense": 0.40309799078386277,
+        "bm25": 0.12434300151653588,
+        "fusion": 0.013912998838350177,
+        "query_total": 0.6031079974491149
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -839,6 +1058,9 @@
       "expected_docs": [
         "vega-backup.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "vega-backup.txt",
         "distractor-astronomy.txt",
@@ -865,17 +1087,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4135000053793192,
-        "dense": 0.32349996035918593,
-        "bm25": 0.05319999763742089,
-        "fusion": 0.009200011845678091,
-        "query_total": 0.42940001003444195
+        "retrieve": 0.530293007614091,
+        "dense": 0.39998699503485113,
+        "bm25": 0.08409599831793457,
+        "fusion": 0.01284400059375912,
+        "query_total": 0.5547360051423311
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -885,6 +1110,9 @@
       "expected_docs": [
         "vega-backup.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "vega-backup.txt",
         "rigel-backup.txt",
@@ -911,17 +1139,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.43920002644881606,
-        "dense": 0.32029999420046806,
-        "bm25": 0.083099992480129,
-        "fusion": 0.009500014130026102,
-        "query_total": 0.4539000219665468
+        "retrieve": 0.5728830001316965,
+        "dense": 0.39334100438281894,
+        "bm25": 0.1326019992120564,
+        "fusion": 0.013630007742904127,
+        "query_total": 0.6004919996485114
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -931,6 +1162,9 @@
       "expected_docs": [
         "vega-delete.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "vega-delete.txt",
         "rigel-delete.txt",
@@ -957,17 +1191,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.41909998981282115,
-        "dense": 0.3273999900557101,
-        "bm25": 0.05819997750222683,
-        "fusion": 0.00790000194683671,
-        "query_total": 0.43489999370649457
+        "retrieve": 0.5285899969749153,
+        "dense": 0.39488299807999283,
+        "bm25": 0.09037800191435963,
+        "fusion": 0.010903997463174164,
+        "query_total": 0.5520660051843151
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -977,6 +1214,9 @@
       "expected_docs": [
         "vega-delete.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "vega-delete.txt",
         "vega-backup.txt",
@@ -1003,17 +1243,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.45519997365772724,
-        "dense": 0.32699998700991273,
-        "bm25": 0.08560001151636243,
-        "fusion": 0.009199953638017178,
-        "query_total": 0.4712999798357487
+        "retrieve": 0.5803099920740351,
+        "dense": 0.3971370024373755,
+        "bm25": 0.13688400213140994,
+        "fusion": 0.013187003787606955,
+        "query_total": 0.6054249970475212
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1023,6 +1266,9 @@
       "expected_docs": [
         "rigel-backup.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "rigel-backup.txt",
         "rigel-delete.txt",
@@ -1049,17 +1295,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.40550000267103314,
-        "dense": 0.318799982778728,
-        "bm25": 0.05219999002292752,
-        "fusion": 0.008600007276982069,
-        "query_total": 0.42100000428035855
+        "retrieve": 0.530534001882188,
+        "dense": 0.3996739978902042,
+        "bm25": 0.08365600660908967,
+        "fusion": 0.012448988854885101,
+        "query_total": 0.5558900011237711
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1069,6 +1318,9 @@
       "expected_docs": [
         "rigel-backup.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "rigel-backup.txt",
         "rigel-delete.txt",
@@ -1095,17 +1347,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.43620000360533595,
-        "dense": 0.31780003337189555,
-        "bm25": 0.08329999400302768,
-        "fusion": 0.009200011845678091,
-        "query_total": 0.45170000521466136
+        "retrieve": 0.5939200054854155,
+        "dense": 0.4101649974472821,
+        "bm25": 0.13272500655148178,
+        "fusion": 0.015085999621078372,
+        "query_total": 0.6185390084283426
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1115,6 +1370,9 @@
       "expected_docs": [
         "rigel-delete.txt"
       ],
+      "answerable": true,
+      "category": "direct",
+      "split": "unspecified",
       "retrieved_docs": [
         "vega-delete.txt",
         "rigel-delete.txt",
@@ -1141,17 +1399,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4168000305071473,
-        "dense": 0.3168999683111906,
-        "bm25": 0.06089999806135893,
-        "fusion": 0.009400013368576765,
-        "query_total": 0.43289997847750783
+        "retrieve": 0.5383459938457236,
+        "dense": 0.3984050126746297,
+        "bm25": 0.09375100489705801,
+        "fusion": 0.012788004823960364,
+        "query_total": 0.5641629977617413
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 0.5,
-        "ndcg_at_5": 0.6309297535714575
+        "ndcg_at_5": 0.6309297535714575,
+        "map_at_5": 0.5,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1161,6 +1422,9 @@
       "expected_docs": [
         "rigel-delete.txt"
       ],
+      "answerable": true,
+      "category": "near_neighbor",
+      "split": "unspecified",
       "retrieved_docs": [
         "rigel-delete.txt",
         "rigel-backup.txt",
@@ -1187,17 +1451,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.46529999235644937,
-        "dense": 0.3420999855734408,
-        "bm25": 0.08600001456215978,
-        "fusion": 0.009800016414374113,
-        "query_total": 0.4813999985344708
+        "retrieve": 0.5949090118519962,
+        "dense": 0.4151960019953549,
+        "bm25": 0.13414300337899476,
+        "fusion": 0.013110009604133666,
+        "query_total": 0.6190349959069863
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.2,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1208,6 +1475,9 @@
         "orion-retention.txt",
         "lyra-retention.txt"
       ],
+      "answerable": true,
+      "category": "multiple-relevant",
+      "split": "unspecified",
       "retrieved_docs": [
         "lyra-retention.txt",
         "orion-export.txt",
@@ -1234,17 +1504,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.42320002103224397,
-        "dense": 0.3277999931015074,
-        "bm25": 0.05889998283237219,
-        "fusion": 0.008400005754083395,
-        "query_total": 0.4396000294946134
+        "retrieve": 0.5318500043358654,
+        "dense": 0.3911380044883117,
+        "bm25": 0.09554698772262782,
+        "fusion": 0.012217002222314477,
+        "query_total": 0.5576349940383807
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.4,
         "mrr": 1.0,
-        "ndcg_at_5": 0.9197207891481876
+        "ndcg_at_5": 0.9197207891481876,
+        "map_at_5": 0.8333333333333333,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1255,6 +1528,9 @@
         "atlas-timeout.txt",
         "nova-timeout.txt"
       ],
+      "answerable": true,
+      "category": "multiple-relevant",
+      "split": "unspecified",
       "retrieved_docs": [
         "nova-timeout.txt",
         "atlas-timeout.txt",
@@ -1281,17 +1557,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4883999936282635,
-        "dense": 0.3274999908171594,
-        "bm25": 0.11850002920255065,
-        "fusion": 0.014999997802078724,
-        "query_total": 0.5085000302642584
+        "retrieve": 0.557284991373308,
+        "dense": 0.41529600275680423,
+        "bm25": 0.09527101065032184,
+        "fusion": 0.012670003343373537,
+        "query_total": 0.5836759955855086
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.4,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1302,6 +1581,9 @@
         "vega-backup.txt",
         "rigel-backup.txt"
       ],
+      "answerable": true,
+      "category": "multiple-relevant",
+      "split": "unspecified",
       "retrieved_docs": [
         "rigel-backup.txt",
         "vega-backup.txt",
@@ -1328,17 +1610,20 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.44700002763420343,
-        "dense": 0.3396999672986567,
-        "bm25": 0.05630002124235034,
-        "fusion": 0.01009996049106121,
-        "query_total": 0.4656000528484583
+        "retrieve": 0.5735290033044294,
+        "dense": 0.4323089960962534,
+        "bm25": 0.09242299711331725,
+        "fusion": 0.013370998203754425,
+        "query_total": 0.6031090015312657
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.4,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     },
@@ -1349,6 +1634,9 @@
         "vega-delete.txt",
         "rigel-delete.txt"
       ],
+      "answerable": true,
+      "category": "multiple-relevant",
+      "split": "unspecified",
       "retrieved_docs": [
         "rigel-delete.txt",
         "vega-delete.txt",
@@ -1375,26 +1663,29 @@
       ],
       "status": "completed",
       "latency_ms": {
-        "retrieve": 0.4607000155374408,
-        "dense": 0.35149999894201756,
-        "bm25": 0.06799999391660094,
-        "fusion": 0.009299954399466515,
-        "query_total": 0.4778000293299556
+        "retrieve": 0.5780950014013797,
+        "dense": 0.4220709961373359,
+        "bm25": 0.10309400386177003,
+        "fusion": 0.012182994396425784,
+        "query_total": 0.6042850000085309
       },
       "metrics": {
         "recall_at_5": 1.0,
         "precision_at_5": 0.4,
         "mrr": 1.0,
-        "ndcg_at_5": 1.0
+        "ndcg_at_5": 1.0,
+        "map_at_5": 1.0,
+        "hit_rate_at_5": 1.0,
+        "retrieval_empty": 0.0
       },
       "missed_docs": []
     }
   ],
   "latency_ms": {
-    "setup": 42.44839999591932,
+    "setup": 36.7790089949267,
     "retrieve": {
-      "p50_ms": 0.4472500295378268,
-      "p95_ms": 0.6182349869050084,
+      "p50_ms": 0.5732060017180629,
+      "p95_ms": 0.659700394317042,
       "samples": 28
     },
     "rerank": {
@@ -1413,24 +1704,31 @@
       "samples": 0
     },
     "query_total": {
-      "p50_ms": 0.4648500180337578,
-      "p95_ms": 0.6406500207958742,
+      "p50_ms": 0.6017999985488132,
+      "p95_ms": 0.6936335026693995,
       "samples": 28
     },
     "dense": {
-      "p50_ms": 0.33054998493753374,
-      "p95_ms": 0.4771550040459258,
+      "p50_ms": 0.4101040030946024,
+      "p95_ms": 0.4503380543610546,
       "samples": 28
     },
     "bm25": {
-      "p50_ms": 0.07949999417178333,
-      "p95_ms": 0.10254000662826,
+      "p50_ms": 0.09932049579219893,
+      "p95_ms": 0.13917030082666315,
       "samples": 28
     },
     "fusion": {
-      "p50_ms": 0.009299983503296971,
-      "p95_ms": 0.014139991253614424,
+      "p50_ms": 0.01314850669587031,
+      "p95_ms": 0.017513344937469807,
       "samples": 28
     }
+  },
+  "judge": {
+    "status": "skipped",
+    "prompt_version": "judge-v1",
+    "model": null,
+    "scores_are_model_generated": false,
+    "human_calibration": "not available unless human labels are supplied"
   }
 }

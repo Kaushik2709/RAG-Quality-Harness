@@ -1,0 +1,35 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-unit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+      HF_HUB_OFFLINE: '1'
+      GEMINI_API_KEY: ''
+      GOOGLE_API_KEY: ''
+      CLAUDE_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: pip install -r requirements-offline.txt
+      - name: Run offline test suite (deterministic, no network, no credentials)
+        run: python -m pytest -q
+      - name: Compile all Python sources
+        run: python -m compileall -q src tests
+      - name: Check for broken dependency requirements
+        run: pip check

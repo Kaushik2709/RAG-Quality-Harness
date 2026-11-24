@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Database, 
   UploadCloud, 
@@ -24,10 +24,22 @@ export default function IngestStudioPage() {
   const [chunkSize, setChunkSize] = useState(500);
   const [chunkOverlap, setChunkOverlap] = useState(50);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [runtime, setRuntime] = useState<any>(null);
   
   const [loading, setLoading] = useState(false);
   const [successResult, setSuccessResult] = useState<any>(null);
   const [errorResult, setErrorResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/runtime/status', { cache: 'no-store' })
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((data) => setRuntime(data))
+      .catch(() => setRuntime(null));
+  }, []);
+
+  const config = runtime?.config || {};
+  const readiness = runtime?.readiness || {};
+  const index = readiness?.components?.index || {};
 
   const handleIngestText = async () => {
     if (!text.trim()) return;
@@ -113,7 +125,7 @@ export default function IngestStudioPage() {
             Knowledge Ingestion & <span className="gradient-text-cyan-indigo">Chunk Pipeline</span>
           </h1>
           <p className="text-gray-400 text-sm mt-1">
-            Parse, segment, and index documents into Qdrant vector store with configurable strategies.
+            Parse, segment, and index documents into the configured vector store with explicit chunking strategies.
           </p>
         </div>
       </div>
@@ -175,7 +187,7 @@ export default function IngestStudioPage() {
                   <textarea
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    placeholder="Paste technical documentation, notes, or knowledge chunks to embed into Qdrant..."
+                    placeholder="Paste technical documentation, notes, or knowledge chunks to embed..."
                     rows={8}
                     className="w-full bg-[#0a0e1a]/80 border border-white/[0.1] rounded-xl p-4 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-cyan-500 font-sans transition resize-none leading-relaxed"
                   />
@@ -194,7 +206,7 @@ export default function IngestStudioPage() {
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4" />
-                      <span>Ingest Text Chunks to Vector DB</span>
+                      <span>Ingest Text Chunks</span>
                     </>
                   )}
                 </button>
@@ -258,7 +270,7 @@ export default function IngestStudioPage() {
                   <span>Ingestion Successful!</span>
                 </div>
                 <p className="font-mono">
-                  Created & embedded <strong>{successResult.chunks_created}</strong> chunks into Qdrant collection.
+                  Created and indexed <strong>{successResult.chunks_created}</strong> chunks. Index version: {successResult.index_version ?? 'n/a'}.
                 </p>
                 <p className="font-mono text-[10px] text-emerald-400/80">Doc ID: {successResult.doc_id}</p>
               </div>
@@ -300,8 +312,7 @@ export default function IngestStudioPage() {
                 className="w-full bg-[#0a0e1a]/80 border border-white/[0.1] rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-cyan-500"
               >
                 <option value="recursive">Recursive Character (General)</option>
-                <option value="semantic">Semantic Similarity Splitter</option>
-                <option value="sentence">Sentence Window Splitter</option>
+                <option value="fixed">Fixed-Size Splitter</option>
               </select>
             </div>
 
@@ -320,7 +331,7 @@ export default function IngestStudioPage() {
                 onChange={(e) => setChunkSize(Number(e.target.value))}
                 className="w-full accent-cyan-500 cursor-pointer"
               />
-              <span className="text-[10px] text-gray-500 block">Target tokens per vector segment</span>
+              <span className="text-[10px] text-gray-500 block">Target characters per vector segment</span>
             </div>
 
             {/* Chunk Overlap */}
@@ -350,31 +361,35 @@ export default function IngestStudioPage() {
                 <HardDrive className="h-4 w-4 text-emerald-400" />
                 <span>Vector Index Specs</span>
               </h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                CONNECTED
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                index.status === 'ready'
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+              }`}>
+                {(index.status || 'UNKNOWN').toUpperCase()}
               </span>
             </div>
 
             <div className="space-y-2.5 text-xs">
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                <span className="text-gray-400">Database Engine</span>
-                <span className="font-mono text-white font-semibold">Qdrant In-Memory / Cloud</span>
+                <span className="text-gray-400">Store Backend</span>
+                <span className="font-mono text-white font-semibold">{config.store_backend || 'unavailable'}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
                 <span className="text-gray-400">Embedding Model</span>
-                <span className="font-mono text-cyan-400">models/gemini-embedding-001</span>
+                <span className="font-mono text-cyan-400 break-all">{config.embedding_model || 'unavailable'}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                <span className="text-gray-400">Vector Dimensions</span>
-                <span className="font-mono text-indigo-400">768 Dim (Dense)</span>
+                <span className="text-gray-400">Indexed Chunks</span>
+                <span className="font-mono text-indigo-400">{index.chunk_count ?? 0}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                <span className="text-gray-400">Distance Metric</span>
-                <span className="font-mono text-white">Cosine Similarity</span>
+                <span className="text-gray-400">Index Version</span>
+                <span className="font-mono text-white">{index.version ?? 'n/a'}</span>
               </div>
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                <span className="text-gray-400">Reranker Model</span>
-                <span className="font-mono text-purple-400">BAAI/bge-reranker-base</span>
+                <span className="text-gray-400">Rerank Policy</span>
+                <span className="font-mono text-purple-400">{config.rerank_policy || 'unavailable'}</span>
               </div>
             </div>
 

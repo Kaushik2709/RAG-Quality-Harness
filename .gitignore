@@ -1,7 +1,7 @@
 # Secrets and machine-local configuration
 .env
 .env.*
-!.env.example
+.env.example
 /.aws/
 /.codex/
 
@@ -50,6 +50,10 @@ out/
 *.sqlite3
 /eval/reports/
 # Keep eval/fixtures/ and eval/verified_reports/ for reproducibility.
+# Local ingestion registry and runtime artifacts.
+/data/ingestion/
+# Benchmark run artifacts (measured locally; regenerate via CI).
+benchmarks/results/retrieval_*.json
 
 # Local agent setup, personal notes and generated launch-video assets
 /.agents/

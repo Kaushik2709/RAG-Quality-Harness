@@ -13,7 +13,7 @@ services:
       test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   postgres:
     image: postgres:16-alpine
@@ -31,7 +31,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_traces"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   api:
     build:
@@ -43,8 +43,12 @@ services:
       - QDRANT_PORT=6333
       - QDRANT_GRPC_PORT=6334
       - POSTGRES_URI=postgresql://rag_user:rag_password@postgres:5432/rag_traces
-      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - MODEL_INIT_MODE=${MODEL_INIT_MODE:-degraded}
+      - RERANK_POLICY=${RERANK_POLICY:-degraded}
+      - STORE_BACKEND=${STORE_BACKEND:-auto}
+      - APP_ENV=${APP_ENV:-development}
     ports:
       - "8000:8000"
     depends_on:

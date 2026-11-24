@@ -57,6 +57,37 @@ def test_judge_timeout():
         LLMJudge(chat_model=TimeoutModel()).evaluate("query", "context", "answer")
 
 
+def test_judge_records_model_and_prompt_provenance():
+    judge = LLMJudge(chat_model=DummyLLMChatModel(), model_id="judge-test-model")
+    result = judge.evaluate("query", "context", "answer")
+    assert result.judge_model == "judge-test-model"
+    assert result.judge_prompt_version == "judge-v1"
+    assert result.evaluated_at
+    assert result.usage_source in {"provider", "unavailable"}
+
+
+def test_calibration_requires_human_scores_and_reports_bias():
+    from src.evaluation.judge import calibration_report
+
+    judge_scores = [
+        {"faithfulness": .9, "answer_relevancy": .8, "context_precision": .7},
+        {"faithfulness": .4, "answer_relevancy": .5, "context_precision": .6},
+    ]
+    human_scores = [
+        {"faithfulness": .8, "answer_relevancy": .9, "context_precision": .7},
+        {"faithfulness": .6, "answer_relevancy": .5, "context_precision": .4},
+    ]
+    report = calibration_report(judge_scores, human_scores)
+    assert report["status"] == "computed"
+    assert report["samples"] == 2
+    assert report["faithfulness"]["mae"] == pytest.approx(.15)
+    assert report["faithfulness"]["bias_judge_minus_human"] == pytest.approx(-.05)
+    assert report["answer_relevancy"]["pearson"] is not None
+    assert calibration_report([], [])["status"] == "unavailable"
+    with pytest.raises(ValueError):
+        calibration_report(judge_scores, human_scores[:1])
+
+
 @pytest.mark.parametrize("score", [float("nan"), float("inf"), -0.1, 1.1])
 def test_judge_scores_reject_nonfinite_or_out_of_range(score):
     class InvalidScoreModel(DummyLLMChatModel):

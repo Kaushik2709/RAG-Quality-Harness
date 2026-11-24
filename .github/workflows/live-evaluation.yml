@@ -1,0 +1,27 @@
+name: Live LLM Evaluation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: .
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install production dependencies
+        run: pip install -r requirements.txt
+      - name: Live embeddings, generation and judge (exit 2 when unavailable)
+        run: python -m src.evaluation.regression_runner --backend google --mode hybrid --judge || true
+      - name: Upload reports even if unavailable/failed
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-evaluation-reports
+          path: eval/reports/*.json

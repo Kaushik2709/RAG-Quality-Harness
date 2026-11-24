@@ -1,0 +1,33 @@
+name: Performance
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 2 * * 1'  # weekly, Monday 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: .
+      HF_HUB_OFFLINE: '1'
+      GEMINI_API_KEY: ''
+      GOOGLE_API_KEY: ''
+      CLAUDE_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: pip install -r requirements-offline.txt
+      - name: Run retrieval benchmarks at concurrency 1/5/10 (10k chunks)
+        run: python benchmarks/retrieval_benchmark.py --chunks 10000 --concurrency 1,5,10 --output benchmarks/results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmarks/results/*.json

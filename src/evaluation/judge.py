@@ -1,10 +1,15 @@
+import datetime
 import json
-from typing import Optional
+import math
+from typing import Dict, Optional, Sequence
 from pydantic import BaseModel, Field, field_validator
 from langchain_core.language_models.chat_models import BaseChatModel
 from src.generation.generator import get_chat_model
 from src.generation.prompt_builder import build_chat_prompt_template
 from src.evaluation.judge_prompts import JUDGE_SYSTEM_PROMPT, JUDGE_USER_PROMPT_TEMPLATE
+
+JUDGE_PROMPT_VERSION = "judge-v1"
+
 
 class JudgeResult(BaseModel):
     faithfulness: float = Field(..., ge=0.0, le=1.0, description="Score 0.0-1.0 measuring factual support in context")
@@ -13,14 +18,23 @@ class JudgeResult(BaseModel):
     answer_relevancy_reasoning: str
     context_precision: float = Field(..., ge=0.0, le=1.0, description="Score 0.0-1.0 measuring context usefulness")
     context_precision_reasoning: str
+    judge_model: Optional[str] = None
+    judge_prompt_version: str = JUDGE_PROMPT_VERSION
+    evaluated_at: Optional[str] = None
+    usage_source: str = "unavailable"
 
     @field_validator("faithfulness", "answer_relevancy", "context_precision")
     def clamp_score(cls, v: float) -> float:
-        return max(0.0, min(1.0, float(v)))
+        value = float(v)
+        if not math.isfinite(value):
+            raise ValueError("judge scores must be finite")
+        return max(0.0, min(1.0, value))
+
 
 class LLMJudge:
-    def __init__(self, chat_model: Optional[BaseChatModel] = None):
+    def __init__(self, chat_model: Optional[BaseChatModel] = None, model_id: Optional[str] = None):
         self.chat_model = chat_model or get_chat_model()
+        self.model_id = model_id or getattr(self.chat_model, "model_name", type(self.chat_model).__name__)
         self.last_usage_metadata = None
         self.prompt_template = build_chat_prompt_template(
             system_template=JUDGE_SYSTEM_PROMPT,
@@ -69,9 +83,74 @@ class LLMJudge:
 
         try:
             parsed = json.loads(text)
+            parsed.update(
+                {
+                    "judge_model": self.model_id,
+                    "judge_prompt_version": JUDGE_PROMPT_VERSION,
+                    "evaluated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "usage_source": "provider" if self.last_usage_metadata else "unavailable",
+                }
+            )
             return JudgeResult(**parsed)
         except Exception as e:
             raise ValueError(
                 f"[LLMJudge Error] Failed to parse LLM Judge response into valid JudgeResult JSON: {e}\nRaw Response:\n{text}"
             )
+
+
+def calibration_report(
+    judge_scores: Sequence[Dict[str, float]],
+    human_scores: Sequence[Dict[str, float]],
+    dimensions: Sequence[str] = ("faithfulness", "answer_relevancy", "context_precision"),
+) -> Dict[str, object]:
+    """Compare judge and human scores where both are available.
+
+    A missing human score is reported as unavailable, never imputed. MAE/RMSE
+    and signed bias are descriptive; correlation needs variance and enough
+    samples to mean anything.
+    """
+    if len(judge_scores) != len(human_scores):
+        raise ValueError("judge and human score lists must have equal length")
+    report: Dict[str, object] = {"samples": len(judge_scores)}
+    if not judge_scores:
+        return {**report, "status": "unavailable", "reason": "no paired scores"}
+    for dimension in dimensions:
+        pairs = [
+            (float(judge[dimension]), float(human[dimension]))
+            for judge, human in zip(judge_scores, human_scores)
+            if dimension in judge and dimension in human
+        ]
+        if not pairs:
+            report[dimension] = {"status": "unavailable", "reason": "dimension missing"}
+            continue
+        errors = [judge - human for judge, human in pairs]
+        judge_values = [pair[0] for pair in pairs]
+        human_values = [pair[1] for pair in pairs]
+        report[dimension] = {
+            "status": "computed",
+            "n": len(pairs),
+            "judge_mean": _mean(judge_values),
+            "human_mean": _mean(human_values),
+            "mae": _mean([abs(error) for error in errors]),
+            "rmse": math.sqrt(_mean([error * error for error in errors])),
+            "bias_judge_minus_human": _mean(errors),
+            "pearson": _pearson(judge_values, human_values),
+        }
+    report["status"] = "computed"
+    return report
+
+
+def _mean(values: Sequence[float]) -> float:
+    return sum(values) / len(values)
+
+
+def _pearson(left: Sequence[float], right: Sequence[float]) -> Optional[float]:
+    if len(left) < 2:
+        return None
+    left_mean, right_mean = _mean(left), _mean(right)
+    numerator = sum((a - left_mean) * (b - right_mean) for a, b in zip(left, right))
+    denominator = math.sqrt(
+        sum((a - left_mean) ** 2 for a in left) * sum((b - right_mean) ** 2 for b in right)
+    )
+    return round(numerator / denominator, 6) if denominator else None
 

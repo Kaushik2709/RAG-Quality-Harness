@@ -1,10 +1,18 @@
-"""Explicit corpus retrieval and identity-based reciprocal rank fusion."""
+"""Explicit corpus retrieval and identity-based reciprocal rank fusion.
+
+This module remains the deterministic, injectable path used by evaluation and
+tests. The production request path uses `retrieval_runtime.RetrievalRuntime`,
+which reuses a versioned BM25 snapshot instead of rebuilding it per request.
+"""
 import re
 from time import perf_counter
 from typing import Any, List, Optional
+
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+
 from src.config import settings
+from src.retrieval.fusion import reciprocal_rank_fusion
 
 
 def tokenize(text):
@@ -13,6 +21,7 @@ def tokenize(text):
 
 class FixedRetriever(BaseRetriever):
     """Pass existing candidates to a compressor without another retrieval."""
+
     documents: List[Document]
 
     def _get_relevant_documents(self, query, *, run_manager):
@@ -26,43 +35,53 @@ class CorpusRetriever(BaseRetriever):
     k: int
     bm25: Any = None
     last_latency_ms: dict = {}
+    last_scores: dict = {}
 
     def _get_relevant_documents(self, query, *, run_manager):
         self.last_latency_ms = {}
+        self.last_scores = {}
         start = perf_counter()
         dense = self.vectorstore.similarity_search(query, k=self.k) if self.mode != "bm25" else []
         if self.mode != "bm25":
-            self.last_latency_ms["dense"] = (perf_counter()-start)*1000
+            self.last_latency_ms["dense"] = (perf_counter() - start) * 1000
         start = perf_counter()
         sparse = []
         if self.mode != "dense" and self.documents:
             scores = self.bm25.get_scores(tokenize(query))
-            order = sorted(range(len(scores)), key=lambda i: (-scores[i], self.documents[i].metadata["chunk_id"]))
-            sparse = [self.documents[i] for i in order[:self.k] if scores[i] > 0]
+            order = sorted(
+                range(len(scores)),
+                key=lambda i: (-scores[i], self.documents[i].metadata["chunk_id"]),
+            )
+            sparse = [self.documents[i] for i in order[: self.k] if scores[i] > 0]
+            self.last_scores = {
+                self.documents[i].metadata["chunk_id"]: float(scores[i]) for i in order[: self.k] if scores[i] > 0
+            }
         if self.mode != "dense":
-            self.last_latency_ms["bm25"] = (perf_counter()-start)*1000
+            self.last_latency_ms["bm25"] = (perf_counter() - start) * 1000
         if self.mode == "dense":
-            return dense[:self.k]
+            return dense[: self.k]
         if self.mode == "bm25":
             return sparse
         start = perf_counter()
-        fused, docs = {}, {}
-        for weight, ranked in ((0.6, dense), (0.4, sparse)):
-            seen = set()
-            for rank, doc in enumerate(ranked, 1):
-                key = doc.metadata["chunk_id"]
-                if key in seen:
-                    continue
-                seen.add(key)
-                docs[key] = doc
-                fused[key] = fused.get(key, 0) + weight / (60 + rank)
-        result = [docs[key] for key in sorted(fused, key=lambda key: (-fused[key], key))[:self.k]]
-        self.last_latency_ms["fusion"] = (perf_counter()-start)*1000
+        result = reciprocal_rank_fusion(
+            [
+                (settings.FUSION_DENSE_WEIGHT, dense),
+                (settings.FUSION_SPARSE_WEIGHT, sparse),
+            ],
+            rrf_k=settings.FUSION_RRF_K,
+            limit=self.k,
+        )
+        self.last_latency_ms["fusion"] = (perf_counter() - start) * 1000
         return result
 
 
-def build_retriever(vectorstore=None, documents: Optional[List[Document]] = None,
-                    top_k=None, use_hybrid=None, mode=None) -> BaseRetriever:
+def build_retriever(
+    vectorstore=None,
+    documents: Optional[List[Document]] = None,
+    top_k=None,
+    use_hybrid=None,
+    mode=None,
+) -> BaseRetriever:
     k = top_k if top_k is not None else settings.TOP_K_RETRIEVAL
     if k <= 0:
         raise ValueError("top_k must be positive")
@@ -71,9 +90,11 @@ def build_retriever(vectorstore=None, documents: Optional[List[Document]] = None
         raise ValueError(f"Unknown retrieval mode: {mode}")
     if vectorstore is None and mode != "bm25":
         from src.retrieval.vector_store import get_vector_store
+
         vectorstore = get_vector_store()
     if documents is None and mode != "dense":
         from src.retrieval.vector_store import get_indexed_documents
+
         documents = get_indexed_documents(vectorstore)
     documents = list(documents or [])
     ids = [d.metadata.get("chunk_id") for d in documents]
@@ -82,5 +103,6 @@ def build_retriever(vectorstore=None, documents: Optional[List[Document]] = None
     bm25 = None
     if mode != "dense" and documents:
         from rank_bm25 import BM25Okapi
+
         bm25 = BM25Okapi([tokenize(d.page_content) or ["__empty__"] for d in documents])
     return CorpusRetriever(vectorstore=vectorstore, documents=documents, mode=mode, k=k, bm25=bm25)
